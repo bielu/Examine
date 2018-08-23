@@ -75,6 +75,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AzureSearchConfig.cs" />
     <Compile Include="AzureSearchIndexer.cs" />
     <Compile Include="AzureSearchResults.cs" />
     <Compile Include="AzureSearchSearcher.cs" />

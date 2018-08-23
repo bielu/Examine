@@ -7,7 +7,7 @@ using System.Web.Hosting;
 
 namespace Examine
 {
-    internal static class TypeHelper
+    public static class TypeHelper
     {
         /// <summary>
         /// Find a type by name
@@ -21,7 +21,9 @@ namespace Examine
         {
             var isHosted = HttpContext.Current != null || HostingEnvironment.IsHosted;
 
-            return isHosted ? BuildManager.GetType(typeName, false) : Type.GetType(typeName);
+            return isHosted 
+                ? BuildManager.GetType(typeName, false) 
+                : Type.GetType(typeName); //TODO: This won't always work, you need to load the assembly and then get the type
         }
     }
 }

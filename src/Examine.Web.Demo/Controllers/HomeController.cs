@@ -58,40 +58,35 @@ namespace Examine.Web.Demo.Controllers
         [HttpGet]
         public ActionResult AzureSearch(string query)
         {
-            //var criteria = ExamineManager.Instance.CreateSearchCriteria();
-            //var result = ExamineManager.Instance.Search(criteria.RawQuery(id));
-            using (var azureSearcher = new AzureSearchSearcher("hello"))
-            {
-                var result = azureSearcher.Search(query, true);
+            var azureSearcher = ExamineManager.Instance.SearchProviderCollection["AzureSearcher"];
+            var result = azureSearcher.Search(query, true);
 
-                var sb = new StringBuilder();
-                sb.AppendLine($"Results :{result.TotalItemCount}");
-                foreach (var searchResult in result)
-                {
-                    sb.AppendLine($"Id:{searchResult.Id}, Score:{searchResult.Score}, Vals: {string.Join(", ", searchResult.Fields.Select(x => x.Value))}");
-                }
-                return Content(sb.ToString());
+            var sb = new StringBuilder();
+            sb.AppendLine($"Results :{result.TotalItemCount}");
+            foreach (var searchResult in result)
+            {
+                sb.AppendLine($"Id:{searchResult.Id}, Score:{searchResult.Score}, Vals: {string.Join(", ", searchResult.Fields.Select(x => x.Value))}");
             }
+            return Content(sb.ToString());
         }
 
         [HttpGet]
         public ActionResult AzureSearchFluent()
         {
-            using (var azureSearcher = new AzureSearchSearcher("hello"))
-            {
-                var query = azureSearcher.CreateSearchCriteria()
-                    .Field("Column1", "a1");
-                
-                var result = azureSearcher.Search(query.Compile());
+            var azureSearcher = ExamineManager.Instance.SearchProviderCollection["AzureSearcher"];
 
-                var sb = new StringBuilder();
-                sb.AppendLine($"Results :{result.TotalItemCount}");
-                foreach (var searchResult in result)
-                {
-                    sb.AppendLine($"Id:{searchResult.Id}, Score:{searchResult.Score}, Vals: {string.Join(", ", searchResult.Fields.Select(x => x.Value))}");
-                }
-                return Content(sb.ToString());
+            var query = azureSearcher.CreateSearchCriteria()
+                .Field("Column1", "a1");
+
+            var result = azureSearcher.Search(query.Compile());
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"Results :{result.TotalItemCount}");
+            foreach (var searchResult in result)
+            {
+                sb.AppendLine($"Id:{searchResult.Id}, Score:{searchResult.Score}, Vals: {string.Join(", ", searchResult.Fields.Select(x => x.Value))}");
             }
+            return Content(sb.ToString());
         }
 
         [HttpPost]
@@ -203,21 +198,17 @@ namespace Examine.Web.Demo.Controllers
         [HttpPost]
         public ActionResult AzureSearchRebuild()
         {
-            var indexCriteria = ExamineManager.Instance.IndexProviderCollection["Simple2Indexer"].IndexerData;
+            var indexer = ExamineManager.Instance.IndexProviderCollection["AzureIndexer"];
+            
+            var timer = new Stopwatch();
+            timer.Start();
 
-            using (var indexer = new AzureSearchIndexer("hello",
-                new TableDirectReaderDataService(),
-                indexCriteria))
-            {
-                var timer = new Stopwatch();
-                timer.Start();
+            indexer.RebuildIndex();
 
-                indexer.RebuildIndex();
+            timer.Stop();
 
-                timer.Stop();
-
-                return View("RebuildIndex", timer.Elapsed.TotalSeconds);
-            }
+            return View("RebuildIndex", timer.Elapsed.TotalSeconds);
+            
         }
 
 
