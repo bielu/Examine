@@ -253,7 +253,7 @@ namespace Examine.LuceneEngine
             return reader.ReadInnerXml();
         }
 
-        internal static Dictionary<string, string> SelectExamineDataValues(this XElement xml)
+        public static Dictionary<string, string> SelectExamineDataValues(this XElement xml)
         {
             //resolve all element data at once since it is much faster to do this than to relookup all of the XML data
             //using Linq and the node.Elements() methods re-gets all of them.

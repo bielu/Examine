@@ -283,6 +283,7 @@ namespace Examine
             }
         }
 
+        //TODO: Explicilty implement this
         public IIndexCriteria IndexerData
         {
             get
@@ -295,6 +296,7 @@ namespace Examine
             }
         }
 
+        //TODO: Explicilty implement this
         public bool IndexExists()
         {
             throw new NotImplementedException();

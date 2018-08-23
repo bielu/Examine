@@ -2,7 +2,7 @@
 
 namespace Examine.LuceneEngine.SearchCriteria
 {
-    internal class ExamineValue : IExamineValue
+    public class ExamineValue : IExamineValue
     {
         public ExamineValue(Examineness vagueness, string value)
             : this(vagueness, value, 1)

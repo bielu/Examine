@@ -176,6 +176,7 @@
     <Compile Include="LuceneEngine\WriterTracker.cs" />
     <Compile Include="NetworkHelper.cs" />
     <Compile Include="OrderedDictionary.cs" />
+    <Compile Include="Providers\CombinedIndexerDataFields.cs" />
     <Compile Include="SearchCriteria\BooleanOperation.cs" />
     <Compile Include="SearchCriteria\DateResolution.cs" />
     <Compile Include="SearchCriteria\IBooleanOperation.cs" />

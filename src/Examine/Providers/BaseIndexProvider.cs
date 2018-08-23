@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Configuration.Provider;
 using System.Linq;
 using System.Security;
@@ -80,7 +79,7 @@ namespace Examine.Providers
         /// </summary>
         public IIndexCriteria IndexerData
         {
-            get { return _indexerData; }
+            get => _indexerData;
             set
             {
                 _indexerData = value;
@@ -92,14 +91,7 @@ namespace Examine.Providers
         private CombinedIndexerDataFields _combinedIndexerDataFields;
         private IIndexCriteria _indexerData;
 
-        internal CombinedIndexerDataFields CombinedIndexerDataFields
-        {
-            get
-            {
-                return _combinedIndexerDataFields 
-                    ?? (_combinedIndexerDataFields = new CombinedIndexerDataFields(IndexerData.UserFields.Concat(IndexerData.StandardFields.ToList())));
-            }
-        }
+        protected CombinedIndexerDataFields CombinedIndexerDataFields => _combinedIndexerDataFields ?? (_combinedIndexerDataFields = new CombinedIndexerDataFields(IndexerData.UserFields.Concat(IndexerData.StandardFields.ToList())));
 
         /// <summary>
         /// Check if the index exists
@@ -246,20 +238,5 @@ namespace Examine.Providers
 
 
 
-    }
-
-    /// <summary>
-    /// The dictionary will be for keys but each key could contain multiple IIndexField
-    /// </summary>
-    internal class CombinedIndexerDataFields : Dictionary<string, IReadOnlyList<IIndexField>>
-    {
-        public CombinedIndexerDataFields(IEnumerable<IIndexField> allFields)
-        {
-            foreach (var f in allFields.GroupBy(x => x.Name))
-            {
-                Add(f.Key, f.ToList());
-            }
-        }
-        
     }
 }

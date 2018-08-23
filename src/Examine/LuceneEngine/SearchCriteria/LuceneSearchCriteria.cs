@@ -66,7 +66,7 @@ namespace Examine.LuceneEngine.SearchCriteria
         #endregion
 
 		[SecuritySafeCritical]
-        internal LuceneSearchCriteria(string type, Analyzer analyzer, string[] fields, bool allowLeadingWildcards, BooleanOperation occurance)
+        public LuceneSearchCriteria(string type, Analyzer analyzer, string[] fields, bool allowLeadingWildcards, BooleanOperation occurance)
         {
             //TODO: It would be nice to be able to pass in the existing field definitions here so 
             // we'd know what fields have sorting enabled so we don't have to use the special sorting syntax for field types

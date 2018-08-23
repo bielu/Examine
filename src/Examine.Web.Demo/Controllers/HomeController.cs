@@ -9,6 +9,7 @@ using Examine.LuceneEngine;
 using Examine.LuceneEngine.Providers;
 using Examine.Web.Demo.Models;
 using Lucene.Net.Index;
+using Examine.AzureSearch;
 
 namespace Examine.Web.Demo.Controllers
 {
@@ -52,6 +53,45 @@ namespace Examine.Web.Demo.Controllers
                 sb.AppendLine($"Id:{searchResult.Id}, Score:{searchResult.Score}, Vals: {string.Join(", ", searchResult.Fields.Select(x => x.Value))}");
             }
             return Content(sb.ToString());
+        }
+
+        [HttpGet]
+        public ActionResult AzureSearch(string query)
+        {
+            //var criteria = ExamineManager.Instance.CreateSearchCriteria();
+            //var result = ExamineManager.Instance.Search(criteria.RawQuery(id));
+            using (var azureSearcher = new AzureSearchSearcher("hello"))
+            {
+                var result = azureSearcher.Search(query, true);
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"Results :{result.TotalItemCount}");
+                foreach (var searchResult in result)
+                {
+                    sb.AppendLine($"Id:{searchResult.Id}, Score:{searchResult.Score}, Vals: {string.Join(", ", searchResult.Fields.Select(x => x.Value))}");
+                }
+                return Content(sb.ToString());
+            }
+        }
+
+        [HttpGet]
+        public ActionResult AzureSearchFluent()
+        {
+            using (var azureSearcher = new AzureSearchSearcher("hello"))
+            {
+                var query = azureSearcher.CreateSearchCriteria()
+                    .Field("Column1", "a1");
+                
+                var result = azureSearcher.Search(query.Compile());
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"Results :{result.TotalItemCount}");
+                foreach (var searchResult in result)
+                {
+                    sb.AppendLine($"Id:{searchResult.Id}, Score:{searchResult.Score}, Vals: {string.Join(", ", searchResult.Fields.Select(x => x.Value))}");
+                }
+                return Content(sb.ToString());
+            }
         }
 
         [HttpPost]
@@ -158,6 +198,26 @@ namespace Examine.Web.Demo.Controllers
 
             return View(model);
             
+        }
+
+        [HttpPost]
+        public ActionResult AzureSearchRebuild()
+        {
+            var indexCriteria = ExamineManager.Instance.IndexProviderCollection["Simple2Indexer"].IndexerData;
+
+            using (var indexer = new AzureSearchIndexer("hello",
+                new TableDirectReaderDataService(),
+                indexCriteria))
+            {
+                var timer = new Stopwatch();
+                timer.Start();
+
+                indexer.RebuildIndex();
+
+                timer.Stop();
+
+                return View("RebuildIndex", timer.Elapsed.TotalSeconds);
+            }
         }
 
 

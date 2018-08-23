@@ -4,9 +4,9 @@ using System.Linq;
 
 namespace Examine.LuceneEngine
 {
-	internal class EmptySearchResults : ISearchResults
+	public class EmptySearchResults : ISearchResults
 	{
-		private List<ISearchResults>  _emptyResult = new List<ISearchResults>();
+	    public static EmptySearchResults Instance { get; } = new EmptySearchResults();
 
 		public IEnumerator<SearchResult> GetEnumerator()
 		{
@@ -18,12 +18,9 @@ namespace Examine.LuceneEngine
 			return Enumerable.Empty<SearchResult>().GetEnumerator();
 		}
 
-		public int TotalItemCount
-		{
-			get { return 0; }
-		}
+		public int TotalItemCount => 0;
 
-		public IEnumerable<SearchResult> Skip(int skip)
+	    public IEnumerable<SearchResult> Skip(int skip)
 		{
 			return Enumerable.Empty<SearchResult>();
 		}

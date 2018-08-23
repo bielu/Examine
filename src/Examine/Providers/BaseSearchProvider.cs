@@ -21,6 +21,9 @@ namespace Examine.Providers
         /// </summary>        
         public virtual ISearchResults Search(ISearchCriteria searchParams, int maxResults)
         {
+            //TODO: Max results should have been part of the ISearchResult
+            //TODO: This should have been abstract
+
             //returns base method
             return Search(searchParams);
         }
@@ -34,6 +37,8 @@ namespace Examine.Providers
         /// <returns></returns>
         public virtual ISearchResults Search(string searchText, bool useWildcards, string indexType)
         {
+            //TODO: This should have been abstract
+
             return Search(searchText, useWildcards);
         }
 

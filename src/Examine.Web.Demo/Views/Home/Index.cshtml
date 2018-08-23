@@ -4,24 +4,27 @@
 <h2>@ViewBag.Message</h2>
 <p>
     To learn more about ASP.NET MVC visit <a href="http://asp.net/mvc" title="ASP.NET MVC Website">
-        http://asp.net/mvc</a>.
+        http://asp.net/mvc
+    </a>.
 </p>
 @using (Html.BeginForm("Populate", "Home"))
-{    
+{
     <p>
         Click to populate db with 27000 rows
         <br />
         <button id="populate" name="populate">
-            Populate</button>
+            Populate
+        </button>
     </p>
 }
 @using (Html.BeginForm("RebuildIndex", "Home"))
-{    
+{
     <p>
         Click to rebuild the index with 27000 rows into Examine
         <br />
         <button id="index" name="index">
-            Index Data</button>
+            Index Data
+        </button>
     </p>
 }
 
@@ -43,6 +46,17 @@
         <br />
         <button id="index" name="index">
             Re-index items
+        </button>
+    </p>
+}
+
+@using (Html.BeginForm("AzureSearchRebuild", "Home"))
+{
+    <p>
+        Click to try out rebuilding in Azure Search
+        <br />
+        <button id="index" name="index">
+            Rebuild in Azure Search
         </button>
     </p>
 }

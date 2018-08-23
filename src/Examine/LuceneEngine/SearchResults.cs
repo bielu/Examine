@@ -20,7 +20,7 @@ namespace Examine.LuceneEngine
         ///<returns></returns>
         public static ISearchResults Empty()
         {
-            return new EmptySearchResults();
+            return EmptySearchResults.Instance;
         }
 
         /// <summary>
@@ -130,7 +130,7 @@ namespace Examine.LuceneEngine
         /// </summary>
         protected Dictionary<int, SearchResult> Docs = new Dictionary<int, SearchResult>();
 
-        // <summary>
+        /// <summary>
         /// Creates the search result from a <see cref="Lucene.Net.Documents.Document"/>
         /// </summary>
         /// <param name="docId">The doc id of the lucene document.</param>
