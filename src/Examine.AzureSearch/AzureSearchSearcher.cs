@@ -101,8 +101,8 @@ namespace Examine.AzureSearch
 
         public override ISearchResults Search(string searchText, bool useWildcards)
         {
-            if (!_indexClient.Value.Indexes.Exists(_indexName))
-                return EmptySearchResults.Instance;
+            //if (!_indexClient.Value.Indexes.Exists(_indexName))
+            //    return EmptySearchResults.Instance;
 
             if (!useWildcards)
             {
@@ -116,8 +116,8 @@ namespace Examine.AzureSearch
 
         public override ISearchResults Search(string searchText, bool useWildcards, string indexType)
         {
-            if (!_indexClient.Value.Indexes.Exists(_indexName))
-                return EmptySearchResults.Instance;
+            //if (!_indexClient.Value.Indexes.Exists(_indexName))
+            //    return EmptySearchResults.Instance;
 
             var sc = CreateSearchCriteria(indexType);
             return TextSearchAllFields(searchText, useWildcards, sc);
@@ -127,8 +127,8 @@ namespace Examine.AzureSearch
         {
             if (searchParams == null) throw new ArgumentNullException(nameof(searchParams));
 
-            if (!_indexClient.Value.Indexes.Exists(_indexName))
-                return EmptySearchResults.Instance;
+            //if (!_indexClient.Value.Indexes.Exists(_indexName))
+            //    return EmptySearchResults.Instance;
 
             var luceneParams = searchParams as LuceneSearchCriteria;
             if (luceneParams == null)
@@ -162,6 +162,7 @@ namespace Examine.AzureSearch
         {
             return CreateSearchCriteria(type, BooleanOperation.And);
         }
+
 
 
         private ISearchResults TextSearchAllFields(string searchText, bool useWildcards, ISearchCriteria sc)
