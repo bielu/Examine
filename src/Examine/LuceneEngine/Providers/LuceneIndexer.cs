@@ -170,8 +170,7 @@ namespace Examine.LuceneEngine.Providers
             }
             else
             {
-                int autoCommitThreshold;
-                if (int.TryParse(config["autoOptimizeCommitThreshold"], out autoCommitThreshold))
+                if (int.TryParse(config["autoOptimizeCommitThreshold"], out var autoCommitThreshold))
                 {
                     OptimizationCommitThreshold = autoCommitThreshold;
                 }
@@ -182,68 +181,18 @@ namespace Examine.LuceneEngine.Providers
             }
 
             //Need to check if the index set or IndexerData is specified...
+            if (!this.ConfigureIndexSet(name, config, out var indexerData, out var indexSetName))
+                throw new ArgumentNullException("indexSet on LuceneExamineIndexer provider has not been set in configuration and/or the IndexerData property has not been explicitly set");
 
-            if (config["indexSet"] == null && IndexerData == null)
-            {
-                //if we don't have either, then we'll try to set the index set by naming conventions
-                var found = false;
-                if (name.EndsWith("Indexer"))
-                {
-                    var setNameByConvension = name.Remove(name.LastIndexOf("Indexer")) + "IndexSet";
-                    //check if we can assign the index set by naming convention
-                    var set = IndexSets.Instance.Sets.Cast<IndexSet>().SingleOrDefault(x => x.SetName == setNameByConvension);
-
-                    if (set != null)
-                    {
-                        //we've found an index set by naming conventions :)
-                        IndexSetName = set.SetName;
-
-                        var indexSet = IndexSets.Instance.Sets[IndexSetName];
-
-                        //if tokens are declared in the path, then use them (i.e. {machinename} )
-                        indexSet.ReplaceTokensInIndexPath();
-
-                        //get the index criteria and ensure folder
-                        IndexerData = GetIndexerData(indexSet);
-
-                        //now set the index folders
-                        WorkingFolder = IndexSets.Instance.Sets[IndexSetName].IndexDirectory;
-                        LuceneIndexFolder = new DirectoryInfo(Path.Combine(IndexSets.Instance.Sets[IndexSetName].IndexDirectory.FullName, "Index"));
-
-                        found = true;
-                    }
-                }
-
-                if (!found)
-                    throw new ArgumentNullException("indexSet on LuceneExamineIndexer provider has not been set in configuration and/or the IndexerData property has not been explicitly set");
-
-            }
-            else if (config["indexSet"] != null)
-            {
-                //if an index set is specified, ensure it exists and initialize the indexer based on the set
-
-                if (IndexSets.Instance.Sets[config["indexSet"]] == null)
-                {
-                    throw new ArgumentException("The indexSet specified for the LuceneExamineIndexer provider does not exist");
-                }
-                else
-                {
-                    IndexSetName = config["indexSet"];
-
-                    var indexSet = IndexSets.Instance.Sets[IndexSetName];
-
-                    //if tokens are declared in the path, then use them (i.e. {machinename} )
-                    indexSet.ReplaceTokensInIndexPath();
-
-                    //get the index criteria and ensure folder
-                    IndexerData = GetIndexerData(indexSet);
-
-                    //now set the index folders
-                    WorkingFolder = IndexSets.Instance.Sets[IndexSetName].IndexDirectory;
-                    LuceneIndexFolder = new DirectoryInfo(Path.Combine(IndexSets.Instance.Sets[IndexSetName].IndexDirectory.FullName, "Index"));
-                }
-            }
-
+            IndexerData = indexerData;
+            IndexSetName = indexSetName;
+            var indexSet = IndexSets.Instance.Sets[IndexSetName];
+            //if tokens are declared in the path, then use them (i.e. {machinename} )
+            indexSet.ReplaceTokensInIndexPath();
+            //now set the index folders
+            WorkingFolder = IndexSets.Instance.Sets[IndexSetName].IndexDirectory;
+            LuceneIndexFolder = new DirectoryInfo(Path.Combine(IndexSets.Instance.Sets[IndexSetName].IndexDirectory.FullName, "Index"));
+            
             InitializeDirectory();
 
             if (config["analyzer"] != null)
@@ -279,7 +228,7 @@ namespace Examine.LuceneEngine.Providers
         /// <summary>
         /// The prefix characters denoting a special field stored in the lucene index for use internally
         /// </summary>
-        public const string SpecialFieldPrefix = "__";
+        public new const string SpecialFieldPrefix = "__"; //TODO: these are here for legacy, remove in v1
 
         /// <summary>
         /// The prefix added to a field when it is included in the index for sorting
@@ -289,12 +238,12 @@ namespace Examine.LuceneEngine.Providers
         /// <summary>
         /// Used to store a non-tokenized key for the document
         /// </summary>
-        public const string IndexTypeFieldName = "__IndexType";
+        public new const string IndexTypeFieldName = "__IndexType"; //TODO: these are here for legacy, remove in v1
 
         /// <summary>
         /// Used to store a non-tokenized type for the document
         /// </summary>
-        public const string IndexNodeIdFieldName = "__NodeId";
+        public new const string IndexNodeIdFieldName = "__NodeId"; //TODO: these are here for legacy, remove in v1
 
         /// <summary>
         /// Used to perform thread locking
@@ -1071,107 +1020,18 @@ namespace Examine.LuceneEngine.Providers
             return true;
         }
 
-
         /// <summary>
         /// Translates the XElement structure into a dictionary object to be indexed.
         /// </summary>
         /// <remarks>
-        /// This is used when re-indexing an individual node since this is the way the provider model works.
-        /// For this provider, it will use a very similar XML structure as umbraco 4.0.x:
+        /// This remains here for legacy reasons but the underlying logic has moved to the base.GetDataToIndex method
         /// </remarks>
-        /// <example>
-        /// <code>
-        /// <![CDATA[
-        /// <root>
-        ///     <node id="1234" nodeTypeAlias="yourIndexType">
-        ///         <data alias="fieldName1">Some data</data>
-        ///         <data alias="fieldName2">Some other data</data>
-        ///     </node>
-        ///     <node id="345" nodeTypeAlias="anotherIndexType">
-        ///         <data alias="fieldName3">More data</data>
-        ///     </node>
-        /// </root>
-        /// ]]>
-        /// </code>        
-        /// </example>
         /// <param name="node"></param>
         /// <param name="type"></param>
         /// <returns></returns>
         protected virtual Dictionary<string, string> GetDataToIndex(XElement node, string type)
         {
-            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            if (!node.IsExamineElement())
-                return values;
-            
-            //resolve all attributes now it is much faster to do this than to relookup all of the XML data
-            //using Linq and the node.Attributes() methods re-gets all of them.
-            var attributeValues = node.Attributes().ToDictionary(x => x.Name.LocalName, x => x.Value);
-
-            var nodeId = int.Parse(attributeValues["id"]);
-
-            // Add umbraco node properties 
-            foreach (var field in IndexerData.StandardFields)
-            {
-                string val = node.SelectExaminePropertyValue(attributeValues, field.Name);
-                if (val == null) continue;
-
-                var args = new IndexingFieldDataEventArgs(node, field.Name, val, true, nodeId);
-                OnGatheringFieldData(args);
-                val = args.FieldValue;
-                
-                //don't add if the value is empty/null                
-                if (!string.IsNullOrEmpty(val))
-                {
-                    if (values.ContainsKey(field.Name))
-                    {
-                        OnDuplicateFieldWarning(nodeId, IndexSetName, field.Name);
-                    }
-                    else
-                    {
-                        values.Add(field.Name, val);
-                    }
-                }
-
-            }
-
-            //resolve all element data now it is much faster to do this than to relookup all of the XML data
-            //using Linq and the node.Elements() methods re-gets all of them.
-            var elementValues = node.SelectExamineDataValues();
-            
-            // Get all user data that we want to index and store into a dictionary 
-            foreach (var field in IndexerData.UserFields)
-            {
-                // Get the value of the data       
-                string value;
-                if (!elementValues.TryGetValue(field.Name, out value))
-                    continue;
-
-                //raise the event and assign the value to the returned data from the event
-                var indexingFieldDataArgs = new IndexingFieldDataEventArgs(node, field.Name, value, false, nodeId);
-                OnGatheringFieldData(indexingFieldDataArgs);
-                value = indexingFieldDataArgs.FieldValue;
-
-                //don't add if the value is empty/null
-                if (!string.IsNullOrEmpty(value))
-                {
-                    if (values.ContainsKey(field.Name))
-                    {
-                        OnDuplicateFieldWarning(nodeId, IndexSetName, field.Name);
-                    }
-                    else
-                    {
-                        values.Add(field.Name, value);
-                    }
-                }
-            }
-
-            //raise the event and assign the value to the returned data from the event
-            var indexingNodeDataArgs = new IndexingNodeDataEventArgs(node, nodeId, values, type);
-            OnGatheringNodeData(indexingNodeDataArgs);
-            values = indexingNodeDataArgs.Fields;
-
-            return values;
+            return GetDataToIndex(node, type, (nodeId, field) => OnDuplicateFieldWarning(nodeId, IndexSetName, field));
         }
 
         /// <summary>
@@ -1726,7 +1586,8 @@ namespace Examine.LuceneEngine.Providers
             {
                 case IndexOperationType.Add:
 
-                    if (ValidateDocument(item.Item.DataToIndex))
+                    //TODO: We can validate this way before this occurs
+                    if (ValidateDocument(item.Item.DataToIndex, () => new IndexingNodeDataEventArgs(item.Item.DataToIndex, int.Parse(item.Item.Id), null, item.Item.IndexType)))
                     {
                         //var added = ProcessIndexQueueItem(item, inMemoryWriter);
                         var added = ProcessIndexQueueItem(item, writer);
@@ -1737,8 +1598,6 @@ namespace Examine.LuceneEngine.Providers
                         //do the delete but no commit - it may or may not exist in the index but since it is not 
                         // valid it should definitely not be there.
                         ProcessDeleteQueueItem(item, writer, false);
-
-                        OnIgnoringNode(new IndexingNodeDataEventArgs(item.Item.DataToIndex, int.Parse(item.Item.Id), null, item.Item.IndexType));
                     }
                     break;
                 case IndexOperationType.Delete:
@@ -1929,7 +1788,7 @@ namespace Examine.LuceneEngine.Providers
 
         private void EnsureSpecialFields(Dictionary<string, string> fields, string nodeId, string type)
         {
-            //ensure the special fields are added to the dictionary to be saved to file
+            //ensure the special fields are added to the dictionary
             if (!fields.ContainsKey(IndexNodeIdFieldName))
                 fields.Add(IndexNodeIdFieldName, nodeId);
             if (!fields.ContainsKey(IndexTypeFieldName))

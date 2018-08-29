@@ -10,6 +10,7 @@ namespace Examine.AzureSearch
 
         public static AzureSearchConfig GetConfig(string indexName)
         {
+            if (string.IsNullOrWhiteSpace(indexName)) throw new ArgumentException("Value cannot be null or whitespace.", nameof(indexName));
             return new AzureSearchConfig(
                 ConfigurationManager.AppSettings[$"examine:AzureSearch[{indexName}].apiKey"],
                 ConfigurationManager.AppSettings[$"examine:AzureSearch[{indexName}].serviceName"]);

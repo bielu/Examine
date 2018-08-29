@@ -11,7 +11,7 @@ namespace Examine.Web.Demo
     /// Data service for Examine using SqlCe's DirectTable reader as it is by far the fastest 
     /// way to read data from SqlCe.
     /// </summary>
-    public class TableDirectReaderDataService : ISimpleDataService
+    public class TableDirectReaderDataService : ISimpleDataService, IIndexDataService
     {
         /// <summary>
         /// Returns some random items from the storage
@@ -96,6 +96,36 @@ namespace Examine.Web.Demo
                             };
                         }
                     }                
+                }
+            }
+        }
+
+        IEnumerable<IndexDocument> IIndexDataService.GetAllData(string indexType)
+        {
+            using (var db = new MyDbContext())
+            {
+                using (db.Database.Connection)
+                {
+                    db.Database.Connection.Open();
+                    using (var cmd = (SqlCeCommand)db.Database.Connection.CreateCommand())
+                    {
+                        cmd.CommandText = "TestModels";
+                        cmd.CommandType = CommandType.TableDirect;
+                        var rs = cmd.ExecuteResultSet(ResultSetOptions.None);
+                        while (rs.Read())
+                        {
+                            yield return new IndexDocument(rs.GetInt32(0), "TestType", new Dictionary<string, string>()
+                            {
+                                {"Column1", rs.GetString(1)},
+                                {"Column2", rs.GetString(2)},
+                                {"Column3", rs.GetString(3)},
+                                {"Column4", rs.GetString(4)},
+                                {"Column5", rs.GetString(5)},
+                                {"Column6", rs.GetString(6)}
+                            });
+
+                        }
+                    }
                 }
             }
         }

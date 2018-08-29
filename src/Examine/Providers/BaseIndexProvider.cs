@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Configuration.Provider;
 using System.Linq;
 using System.Security;
 using Examine;
 using System.Xml.Linq;
+using Examine.LuceneEngine;
 
 namespace Examine.Providers
 {
@@ -12,6 +15,21 @@ namespace Examine.Providers
     /// </summary>
     public abstract class BaseIndexProvider : ProviderBase, IIndexer
     {
+        /// <summary>
+        /// Used to store a non-tokenized key for the document
+        /// </summary>
+        public const string IndexTypeFieldName = "__IndexType";
+
+        /// <summary>
+        /// Used to store a non-tokenized type for the document
+        /// </summary>
+        public const string IndexNodeIdFieldName = "__NodeId";
+
+        /// <summary>
+        /// The prefix characters denoting a special field stored in the lucene index for use internally
+        /// </summary>
+        public const string SpecialFieldPrefix = "__";
+
         /// <summary>
         /// Initializes a new instance of the <see cref="BaseIndexProvider"/> class.
         /// </summary>
@@ -208,6 +226,8 @@ namespace Examine.Providers
         /// Raises the <see cref="E:GatheringFieldData"/> event.
         /// </summary>
         /// <param name="e">The <see cref="Examine.IndexingFieldDataEventArgs"/> instance containing the event data.</param>
+        [Obsolete("Generally not used, will be removed in future versions, use GatheringNodeData instead")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         protected virtual void OnGatheringFieldData(IndexingFieldDataEventArgs e)
         {
             if (GatheringFieldData != null)
@@ -236,7 +256,178 @@ namespace Examine.Providers
 
         #endregion
 
+        /// <summary>
+        /// Ensures that the node being indexed is of a correct type and is a descendent of the parent id specified.
+        /// </summary>
+        /// <param name="node"></param>
+        /// <param name="ignoringNodeArgs"></param>
+        /// <returns></returns>
+        protected virtual bool ValidateDocument(XElement node, Func<IndexingNodeDataEventArgs> ignoringNodeArgs)
+        {
+            //check if this document is of a correct type of node type alias
+            if (IndexerData.IncludeNodeTypes.Any())
+                if (!IndexerData.IncludeNodeTypes.Contains(node.ExamineNodeTypeAlias()))
+                {
+                    if (ignoringNodeArgs != null)
+                        OnIgnoringNode(ignoringNodeArgs());
 
+                    return false;
+                }
+                    
+
+            //if this node type is part of our exclusion list, do not validate
+            if (IndexerData.ExcludeNodeTypes.Any())
+                if (IndexerData.ExcludeNodeTypes.Contains(node.ExamineNodeTypeAlias()))
+                {
+                    if (ignoringNodeArgs != null)
+                        OnIgnoringNode(ignoringNodeArgs());
+
+                    return false;
+                }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Translates the XElement structure into a dictionary object to be indexed.
+        /// </summary>
+        /// <remarks>
+        /// This is used when re-indexing an individual node since this is the way the provider model works.
+        /// For this provider, it will use a very similar XML structure as umbraco 4.0.x:
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// <![CDATA[
+        /// <root>
+        ///     <node id="1234" nodeTypeAlias="yourIndexType">
+        ///         <data alias="fieldName1">Some data</data>
+        ///         <data alias="fieldName2">Some other data</data>
+        ///     </node>
+        ///     <node id="345" nodeTypeAlias="anotherIndexType">
+        ///         <data alias="fieldName3">More data</data>
+        ///     </node>
+        /// </root>
+        /// ]]>
+        /// </code>        
+        /// </example>
+        /// <param name="node"></param>
+        /// <param name="type"></param>
+        /// <param name="onDuplicate"></param>
+        /// <returns></returns>
+        protected virtual Dictionary<string, string> GetDataToIndex(XElement node, string type, Action<int, string> onDuplicate)
+        {
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!node.IsExamineElement())
+                return values;
+
+            //resolve all attributes now it is much faster to do this than to relookup all of the XML data
+            //using Linq and the node.Attributes() methods re-gets all of them.
+            var attributeValues = node.Attributes().ToDictionary(x => x.Name.LocalName, x => x.Value);
+
+            var nodeId = int.Parse(attributeValues["id"]);
+
+            // Add umbraco node properties 
+            foreach (var field in IndexerData.StandardFields)
+            {
+                string val = node.SelectExaminePropertyValue(attributeValues, field.Name);
+                if (val == null) continue;
+
+                var args = new IndexingFieldDataEventArgs(node, field.Name, val, true, nodeId);
+                OnGatheringFieldData(args);
+                val = args.FieldValue;
+
+                //don't add if the value is empty/null                
+                if (!string.IsNullOrEmpty(val))
+                {
+                    if (values.ContainsKey(field.Name))
+                    {
+                        onDuplicate?.Invoke(nodeId, field.Name);
+                    }
+                    else
+                    {
+                        values.Add(field.Name, val);
+                    }
+                }
+
+            }
+
+            //resolve all element data now it is much faster to do this than to relookup all of the XML data
+            //using Linq and the node.Elements() methods re-gets all of them.
+            var elementValues = node.SelectExamineDataValues();
+
+            // Get all user data that we want to index and store into a dictionary 
+            foreach (var field in IndexerData.UserFields)
+            {
+                // Get the value of the data       
+                if (!elementValues.TryGetValue(field.Name, out var value))
+                    continue;
+
+                //raise the event and assign the value to the returned data from the event
+                var indexingFieldDataArgs = new IndexingFieldDataEventArgs(node, field.Name, value, false, nodeId);
+                OnGatheringFieldData(indexingFieldDataArgs);
+                value = indexingFieldDataArgs.FieldValue;
+
+                //don't add if the value is empty/null
+                if (string.IsNullOrEmpty(value)) continue;
+
+                if (values.ContainsKey(field.Name))
+                {
+                    onDuplicate?.Invoke(nodeId, field.Name);
+                }
+                else
+                {
+                    values.Add(field.Name, value);
+                }
+            }
+
+            //raise the event and assign the value to the returned data from the event
+            var indexingNodeDataArgs = new IndexingNodeDataEventArgs(node, nodeId, values, type);
+            OnGatheringNodeData(indexingNodeDataArgs);
+            values = indexingNodeDataArgs.Fields;
+
+            //ensure the special fields are added to the dictionary
+            if (!values.ContainsKey(IndexNodeIdFieldName))
+                values.Add(IndexNodeIdFieldName, attributeValues["id"]);
+            if (!values.ContainsKey(IndexTypeFieldName))
+                values.Add(IndexTypeFieldName, type);
+
+            return values;
+        }
+
+        protected virtual Dictionary<string, string> GetDataToIndex(IndexDocument doc, string type)
+        {
+            var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            var nodeId = doc.NodeId;
+
+            foreach (var field in IndexerData.StandardFields)
+            {
+                if (!doc.RowData.TryGetValue(field.Name, out var val)) continue;
+                if (string.IsNullOrEmpty(val)) continue;
+                values.Add(field.Name, val);
+            }
+            
+            foreach (var field in IndexerData.UserFields)
+            {
+                if (!doc.RowData.TryGetValue(field.Name, out var val)) continue;
+                if (string.IsNullOrEmpty(val)) continue;
+                values.Add(field.Name, val);
+            }
+
+            //raise the event and assign the value to the returned data from the event
+            var indexingNodeDataArgs = new IndexingNodeDataEventArgs(nodeId, values, type);
+            OnGatheringNodeData(indexingNodeDataArgs);
+            values = indexingNodeDataArgs.Fields;
+
+            //ensure the special fields are added to the dictionary
+            if (!values.ContainsKey(IndexNodeIdFieldName))
+                values.Add(IndexNodeIdFieldName, doc.NodeId.ToString());
+            if (!values.ContainsKey(IndexTypeFieldName))
+                values.Add(IndexTypeFieldName, type);
+
+            return values;
+        }
 
     }
 }

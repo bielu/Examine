@@ -16,7 +16,7 @@ using Microsoft.Azure.Search.Models;
 
 namespace Examine.AzureSearch
 {
-    public class AzureSearchIndexer : BaseIndexProvider, IDisposable
+    public class AzureSearchIndexer : IndexProvider, IDisposable
     {
         private string _indexName;
         private string _searchServiceName;
@@ -24,14 +24,15 @@ namespace Examine.AzureSearch
         private bool? _exists;
         private ISearchIndexClient _indexer;
         private readonly Lazy<ISearchServiceClient> _client;
-
+        
         public AzureSearchIndexer()
         {
             _client = new Lazy<ISearchServiceClient>(CreateSearchServiceClient);
         }
 
-        public AzureSearchIndexer(string indexName, string searchServiceName, string apiKey, string indexingAnalyzer, IIndexCriteria indexerData, ISimpleDataService dataService) 
-            : this()
+        public AzureSearchIndexer(string indexName, string searchServiceName, string apiKey, string indexingAnalyzer, 
+            IIndexCriteria indexerData, IIndexDataService dataService)
+            : base(dataService)
         {   
             //TODO: Need to 'clean' the name according to Azure Search rules
             _indexName = indexName.ToLowerInvariant();
@@ -39,84 +40,24 @@ namespace Examine.AzureSearch
             _apiKey = apiKey;
             IndexingAnalyzer = indexingAnalyzer;
             IndexerData = indexerData;
-            DataService = dataService;
             IndexerData = indexerData;
+
+            _client = new Lazy<ISearchServiceClient>(CreateSearchServiceClient);
         }
-
-        //TODO: Use this
-        public string[] IndexTypes { get; private set; }
-
+        
         //TODO: Use this
         public string IndexingAnalyzer { get; private set; }
-
-        /// <summary>
-        /// The data service used to retrieve all of the data for an index type
-        /// </summary>
-        public ISimpleDataService DataService { get; private set; }
-
+        
         public override void Initialize(string name, NameValueCollection config)
         {
             base.Initialize(name, config);
 
-            IndexTypes = config["indexTypes"].Split(',');
+            if (!this.ConfigureIndexSet(name, config, out var indexerData, out var indexSetName))
+                throw new ArgumentNullException("indexSet on LuceneExamineIndexer provider has not been set in configuration and/or the IndexerData property has not been explicitly set");
 
-            if (config["dataService"] != null && !string.IsNullOrEmpty(config["dataService"]))
-            {
-                //this should be a fully qualified type
-                var serviceType = TypeHelper.FindType(config["dataService"]);
-                DataService = (ISimpleDataService)Activator.CreateInstance(serviceType);
-            }
-            else
-            {
-                throw new ArgumentNullException("The dataService property must be specified for the AzureSearchIndexer provider");
-            }
-
-            if (config["indexSet"] == null && IndexerData == null)
-            {
-                //if we don't have either, then we'll try to set the index set by naming conventions
-                var found = false;
-                if (name.EndsWith("Indexer"))
-                {
-                    var setNameByConvension = name.Remove(name.LastIndexOf("Indexer")) + "IndexSet";
-                    //check if we can assign the index set by naming convention
-                    var set = IndexSets.Instance.Sets.Cast<IndexSet>().SingleOrDefault(x => x.SetName == setNameByConvension);
-
-                    if (set != null)
-                    {
-                        //we've found an index set by naming conventions :)
-                        //TODO: Need to 'clean' the name according to Azure Search rules
-                        _indexName = set.SetName.ToLowerInvariant();
-
-                        var indexSet = IndexSets.Instance.Sets[set.SetName];
-                        
-                        //get the index criteria and ensure folder
-                        IndexerData = GetIndexerData(indexSet);
-
-                        found = true;
-                    }
-                }
-
-                if (!found)
-                    throw new ArgumentNullException("indexSet on AzureSearchIndexer provider has not been set in configuration and/or the IndexerData property has not been explicitly set");
-
-            }
-            else if (config["indexSet"] != null)
-            {
-                //if an index set is specified, ensure it exists and initialize the indexer based on the set
-
-                if (IndexSets.Instance.Sets[config["indexSet"]] == null)
-                {
-                    throw new ArgumentException("The indexSet specified for the AzureSearchIndexer provider does not exist");
-                }
-
-                //TODO: Need to 'clean' the name according to Azure Search rules
-                _indexName = config["indexSet"].ToLowerInvariant();
-
-                var indexSet = IndexSets.Instance.Sets[_indexName];
-
-                //get the index criteria and ensure folder
-                IndexerData = GetIndexerData(indexSet);
-            }
+            IndexerData = indexerData;
+            //TODO: Need to 'clean' the name according to Azure Search rules
+            _indexName = indexSetName.ToLowerInvariant();
 
             if (config["analyzer"] != null)
             {
@@ -133,131 +74,28 @@ namespace Examine.AzureSearch
             var serviceClient = new SearchServiceClient(_searchServiceName, new SearchCredentials(_apiKey));
             return serviceClient;
         }
-
-        public override void ReIndexNode(XElement node, string type)
-        {
-            var values = node.SelectExamineDataValues();
-            var nodeTypeAlias = node.ExamineNodeTypeAlias();
-            var id = (int)node.Attribute("id");
-
-            var indexer = GetIndexer();
-
-            var doc = new Document
-            {
-                ["id"] = id,
-                ["nodeTypeAlias"] = nodeTypeAlias
-            };
-            foreach(var r in values)
-            {
-                doc[r.Key] = r.Value;
-            }
-
-            //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk
-            //TODO: move this to a method which includes an event
-            var result = indexer.Documents.Index(IndexBatch.MergeOrUpload(new[] {doc}));
-        }
-
-        public override void DeleteFromIndex(string nodeId)
+        
+        protected override void DeleteItem(string id, Action<KeyValuePair<string, string>> onComplete)
         {
             var indexer = GetIndexer();
 
             //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk
-            var result = indexer.Documents.Index(IndexBatch.Delete("id", new[] {nodeId}));
-        }
+            var result = indexer.Documents.Index(IndexBatch.Delete(PrefixSpecialFieldName(IndexNodeIdFieldName), new[] { id }));
 
-        public override void IndexAll(string type)
-        {
-            //TODO: Support types
-            if (type != "content") throw new InvalidOperationException("Invalid type");
-
-            //TODO: First we should delete all data of this type
-
-            var indexer = GetIndexer();
-            //batches can only contain 1000 records
-            foreach(var rowGroup in GetAllData(type).InGroupsOf(1000))
-            {
-                //TODO: move this to a method which includes an event
-                var batch = IndexBatch.Upload(rowGroup);
-                
-                try
-                {
-                    var result = indexer.Documents.Index(batch);
-                }
-                catch (IndexBatchException e)
-                {
-                    //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk and retry
-
-                    // Sometimes when your Search service is under load, indexing will fail for some of the documents in
-                    // the batch. Depending on your application, you can take compensating actions like delaying and
-                    // retrying. For this simple demo, we just log the failed document keys and continue.
-                    Console.WriteLine(
-                        "Failed to index some of the documents: {0}",
-                        string.Join(", ", e.IndexingResults.Where(r => !r.Succeeded).Select(r => r.Key)));
-                }
-
-            }
-            
-        }
-
-        public override void RebuildIndex()
-        {
-            EnsureIndex(true);
-
-            PerformIndexRebuild();
+            onComplete(new KeyValuePair<string, string>(IndexNodeIdFieldName, id));
         }
 
         public override bool IndexExists()
         {
             return _exists ?? (_exists = _client.Value.Indexes.Exists(_indexName)).Value;
         }
-
-        /// <summary>
-        /// Returns IIndexCriteria object from the IndexSet
-        /// </summary>
-        /// <param name="indexSet"></param>
-        protected virtual IIndexCriteria GetIndexerData(IndexSet indexSet)
-        {
-            return new IndexCriteria(
-                indexSet.IndexAttributeFields.Cast<IIndexField>().ToArray(),
-                indexSet.IndexUserFields.Cast<IIndexField>().ToArray(),
-                indexSet.IncludeNodeTypes.ToList().Select(x => x.Name).ToArray(),
-                indexSet.ExcludeNodeTypes.ToList().Select(x => x.Name).ToArray(),
-                indexSet.IndexParentId);
-        }
-
+        
         private ISearchIndexClient GetIndexer()
         {
             return _indexer ?? (_indexer = _client.Value.Indexes.GetClient(_indexName));
         }
-
-        private IEnumerable<Document> GetAllData(string type)
-        {
-            foreach (var row in DataService.GetAllData(type))
-            {
-                var doc = new Document
-                {
-                    ["id"] = row.NodeDefinition.NodeId.ToString(),
-                    ["nodeTypeAlias"] = row.NodeDefinition.Type
-                };
-                foreach (var r in row.RowData)
-                {
-                    doc[r.Key] = r.Value;
-                }
-
-                yield return doc;
-            }
-        }
-
-        /// <summary>
-        /// Indexes each index type defined in IndexTypes property
-        /// </summary>
-        private void PerformIndexRebuild()
-        {
-            //TODO: Support types
-            IndexAll("content");
-        }
-
-        private void EnsureIndex(bool forceOverwrite)
+        
+        protected override void EnsureIndex(bool forceOverwrite)
         {
             if (!forceOverwrite && _exists.HasValue && _exists.Value) return;
 
@@ -270,6 +108,113 @@ namespace Examine.AzureSearch
             }
 
             CreateIndex();
+        }
+
+        protected override void IndexItem(string id, string type, IDictionary<string, string> values, Action onComplete)
+        {
+            //TODO: Run this on a background thread
+
+            var indexer = GetIndexer();
+
+            var doc = new Document();
+            foreach (var r in values)
+            {
+                doc[r.Key] = r.Value;
+            }
+
+            //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk
+            //TODO: move this to a method which includes an event
+            var result = indexer.Documents.Index(IndexBatch.Upload(new[] { doc }));
+
+            onComplete();
+        }
+
+        protected override void IndexItems(string type, IEnumerable<IndexDocument> docs, Action<IEnumerable<IndexedNode>> batchComplete)
+        {
+            //TODO: Run this on a background thread
+
+            var indexer = GetIndexer();
+            DeleteAllDocumentsOfType(indexer, type);
+
+            //batches can only contain 1000 records
+            foreach (var rowGroup in docs.InGroupsOf(1000))
+            {
+                var batch = IndexBatch.Upload(ToAzureSearchDocs(rowGroup));
+
+                try
+                {
+                    var indexResult = indexer.Documents.Index(batch);
+                    //TODO: Do we need to check for errors in any of the results?
+
+                    batchComplete(indexResult.Results.Select(x => new IndexedNode
+                    {
+                        NodeId = int.Parse(x.Key), //TODO: error check
+                        Type = type
+                    }));
+                }
+                catch (IndexBatchException e)
+                {
+                    //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk and retry
+
+                    // Sometimes when your Search service is under load, indexing will fail for some of the documents in
+                    // the batch. Depending on your application, you can take compensating actions like delaying and
+                    // retrying. For this simple demo, we just log the failed document keys and continue.
+                    
+                    //TODO: Output to abstract ILogger
+                    Console.WriteLine(
+                        "Failed to index some of the documents: {0}",
+                        string.Join(", ", e.IndexingResults.Where(r => !r.Succeeded).Select(r => r.Key)));
+                }
+            }
+        }
+
+        public void DeleteAllDocumentsOfType(ISearchIndexClient indexer, string type)
+        {
+            // Query all
+            var searchResult = indexer.Documents.Search<Document>($"{PrefixSpecialFieldName(IndexTypeFieldName)}:{type}");
+
+            if (searchResult.Results.Count == 0)
+                return;
+
+            var toDelete =
+                searchResult
+                    .Results
+                    .Select(r => r.Document["id"].ToString());
+
+            // Delete all
+            try
+            {
+                var batch = IndexBatch.Delete(PrefixSpecialFieldName(IndexNodeIdFieldName), toDelete);
+                var result = indexer.Documents.Index(batch);
+            }
+            catch (IndexBatchException ex)
+            {
+                //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk and retry
+
+                //TODO: Output to abstract ILogger
+                Console.WriteLine($"Failed to delete documents: {string.Join(", ", ex.IndexingResults.Where(r => !r.Succeeded).Select(r => r.Key))}");
+                throw;
+            }
+        }
+
+        private IEnumerable<Document> ToAzureSearchDocs(IEnumerable<IndexDocument> docs)
+        {
+            foreach (var d in docs)
+            {
+                var ad = new Document();
+                foreach (var i in d.RowData)
+                {
+                    if (i.Key.StartsWith(SpecialFieldPrefix))
+                    {
+                        ad[PrefixSpecialFieldName(i.Key)] = i.Value;
+                    }
+                    else
+                    {
+                        ad[i.Key] = i.Value;
+                    }
+                }
+                yield return ad;
+            }
         }
 
         private void CreateIndex()
@@ -290,18 +235,24 @@ namespace Examine.AzureSearch
             }).ToList();
 
             //id must be string
-            fields.Add(new Field("id", DataType.String)
+            fields.Add(new Field(PrefixSpecialFieldName(IndexNodeIdFieldName), DataType.String)
             {
                 IsKey = true,
                 IsSortable = true
             });
 
-            fields.Add(new Field("nodeTypeAlias", DataType.String)
+            fields.Add(new Field(PrefixSpecialFieldName(IndexTypeFieldName), DataType.String)
             {
                 IsSearchable = true,
             });
 
             var index = _client.Value.Indexes.Create(new Index(_indexName, fields));
+        }
+
+        private string PrefixSpecialFieldName(string fieldName)
+        {
+            //azure search requires that it starts with a letter
+            return $"z{fieldName}";
         }
 
         private DataType FromExamineType(string type)

@@ -12,8 +12,8 @@ namespace Examine
             IndexType = indexType;
         }
 
-        public int NodeId { get; private set; }
-        public Dictionary<string, string> Fields { get; private set; }
-        public string IndexType { get; private set; }
+        public int NodeId { get; }
+        public Dictionary<string, string> Fields { get; }
+        public string IndexType { get; }
     }
 }

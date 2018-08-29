@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 
 namespace Examine
 {
+    [Obsolete("Generally not used, will be removed in future versions, use GatheringNodeData instead")]
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public class IndexingFieldDataEventArgs : EventArgs, INodeEventArgs
     {
 
