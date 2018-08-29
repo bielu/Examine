@@ -30,7 +30,7 @@ namespace Examine.AzureSearch
             _client = new Lazy<ISearchServiceClient>(CreateSearchServiceClient);
         }
 
-        public AzureSearchIndexer(string indexName, string searchServiceName, string apiKey, string indexingAnalyzer, 
+        public AzureSearchIndexer(string indexName, string searchServiceName, string apiKey, string analyzer, 
             IIndexCriteria indexerData, IIndexDataService dataService)
             : base(dataService)
         {   
@@ -38,15 +38,17 @@ namespace Examine.AzureSearch
             _indexName = indexName.ToLowerInvariant();
             _searchServiceName = searchServiceName;
             _apiKey = apiKey;
-            IndexingAnalyzer = indexingAnalyzer;
+            Analyzer = analyzer;
             IndexerData = indexerData;
             IndexerData = indexerData;
 
             _client = new Lazy<ISearchServiceClient>(CreateSearchServiceClient);
         }
         
-        //TODO: Use this
-        public string IndexingAnalyzer { get; private set; }
+        /// <summary>
+        /// The name of the analyzer to use by default for fields
+        /// </summary>
+        public string Analyzer { get; private set; }
         
         public override void Initialize(string name, NameValueCollection config)
         {
@@ -61,7 +63,7 @@ namespace Examine.AzureSearch
 
             if (config["analyzer"] != null)
             {
-                IndexingAnalyzer = config["analyzer"];
+                Analyzer = config["analyzer"];
             }
             
             var azureSearchConfig = AzureSearchConfig.GetConfig(_indexName);
@@ -168,7 +170,7 @@ namespace Examine.AzureSearch
             }
         }
 
-        public void DeleteAllDocumentsOfType(ISearchIndexClient indexer, string type)
+        private static void DeleteAllDocumentsOfType(ISearchIndexClient indexer, string type)
         {
             // Query all
             var searchResult = indexer.Documents.Search<Document>($"{PrefixSpecialFieldName(IndexTypeFieldName)}:{type}");
@@ -197,7 +199,7 @@ namespace Examine.AzureSearch
             }
         }
 
-        private IEnumerable<Document> ToAzureSearchDocs(IEnumerable<IndexDocument> docs)
+        private static IEnumerable<Document> ToAzureSearchDocs(IEnumerable<IndexDocument> docs)
         {
             foreach (var d in docs)
             {
@@ -219,8 +221,6 @@ namespace Examine.AzureSearch
 
         private void CreateIndex()
         {
-            //TODO: Support analyzer
-
             var fields = CombinedIndexerDataFields.SelectMany(x =>
             {
                 return x.Value.Select(f =>
@@ -229,7 +229,8 @@ namespace Examine.AzureSearch
                     return new Field(x.Key, dataType)
                     {
                         IsSearchable = dataType == DataType.String,
-                        IsSortable = f.EnableSorting
+                        IsSortable = f.EnableSorting,
+                        Analyzer = FromLuceneAnalyzer(Analyzer)
                     };
                 });
             }).ToList();
@@ -238,27 +239,92 @@ namespace Examine.AzureSearch
             fields.Add(new Field(PrefixSpecialFieldName(IndexNodeIdFieldName), DataType.String)
             {
                 IsKey = true,
-                IsSortable = true
+                IsSortable = true,
+                Analyzer = AnalyzerName.Whitespace
             });
 
             fields.Add(new Field(PrefixSpecialFieldName(IndexTypeFieldName), DataType.String)
             {
                 IsSearchable = true,
+                Analyzer = AnalyzerName.Whitespace
             });
+
+            //TODO: We should have a custom event for devs to modify the AzureSearch data directly here
 
             var index = _client.Value.Indexes.Create(new Index(_indexName, fields));
         }
 
-        private string PrefixSpecialFieldName(string fieldName)
+        private static AnalyzerName FromLuceneAnalyzer(string analyzer)
+        {
+            if (!analyzer.Contains(",")) 
+                return AnalyzerName.Create(analyzer);
+            
+            //if it contains a comma, we'll assume it's an assembly typed name
+
+            if (analyzer.Contains("StandardAnalyzer"))
+                return AnalyzerName.StandardLucene;
+            if (analyzer.Contains("WhitespaceAnalyzer"))
+                return AnalyzerName.Whitespace;
+            if (analyzer.Contains("SimpleAnalyzer"))
+                return AnalyzerName.Simple;
+            if (analyzer.Contains("KeywordAnalyzer"))
+                return AnalyzerName.Keyword;
+            if (analyzer.Contains("StopAnalyzer"))
+                return AnalyzerName.Stop;
+
+            if (analyzer.Contains("ArabicAnalyzer"))
+                return AnalyzerName.ArLucene;
+            if (analyzer.Contains("BrazilianAnalyzer"))
+                return AnalyzerName.PtBRLucene;
+            if (analyzer.Contains("ChineseAnalyzer"))
+                return AnalyzerName.ZhHansLucene;
+            //if (analyzer.Contains("CJKAnalyzer")) //TODO: Not sure where this maps
+            //    return AnalyzerName.ZhHansLucene;
+            if (analyzer.Contains("CzechAnalyzer"))
+                return AnalyzerName.CsLucene;
+            if (analyzer.Contains("DutchAnalyzer"))
+                return AnalyzerName.NlLucene;
+            if (analyzer.Contains("FrenchAnalyzer"))
+                return AnalyzerName.FrLucene;
+            if (analyzer.Contains("GermanAnalyzer"))
+                return AnalyzerName.DeLucene;
+            if (analyzer.Contains("RussianAnalyzer"))
+                return AnalyzerName.RuLucene;
+
+            //if the above fails, return standard
+            return AnalyzerName.StandardLucene;
+
+        }
+
+        private static string PrefixSpecialFieldName(string fieldName)
         {
             //azure search requires that it starts with a letter
             return $"z{fieldName}";
         }
 
-        private DataType FromExamineType(string type)
+        private static DataType FromExamineType(string type)
         {
-            //TODO: Fill this in
-            return DataType.String;
+            switch (type)
+            {
+                case DataTypes.Date:
+                    return DataType.DateTimeOffset;
+                case DataTypes.Double:
+                case DataTypes.Float:
+                    return DataType.Double;
+                case DataTypes.Long:
+                    return DataType.Int64;
+                case DataTypes.Int:
+                case DataTypes.Number:
+                    return DataType.Int32;
+                case DataTypes.DateDay:
+                case DataTypes.DateHour:
+                case DataTypes.DateMinute:
+                case DataTypes.DateMonth:
+                case DataTypes.DateYear:
+                    throw new NotSupportedException($"Azure search doesn't support the data type {type}, use DateTime instead");
+                default:
+                    return DataType.String;
+            }
         }
 
         public void Dispose()

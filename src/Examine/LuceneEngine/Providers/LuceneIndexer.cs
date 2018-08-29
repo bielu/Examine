@@ -1139,58 +1139,58 @@ namespace Examine.LuceneEngine.Providers
                     if (string.IsNullOrEmpty(indexField.Type)) indexField.Type = string.Empty;
                     switch (indexField.Type.ToUpper())
                     {
-                        case "NUMBER":
-                        case "INT":
+                        case DataTypes.Number:
+                        case DataTypes.Int:
                             if (!TryConvert<int>(field.Value, out parsedVal))
                                 break;
                             luceneField = new NumericField(field.Key, Field.Store.YES, !Equals(lucenePolicy, Field.Index.NO)).SetIntValue((int)parsedVal);
                             luceneSortedField = new NumericField(SortedFieldNamePrefix + field.Key, Field.Store.NO, true).SetIntValue((int)parsedVal);
                             break;
-                        case "FLOAT":
+                        case DataTypes.Float:
                             if (!TryConvert<float>(field.Value, out parsedVal))
                                 break;
                             luceneField = new NumericField(field.Key, Field.Store.YES, !Equals(lucenePolicy, Field.Index.NO)).SetFloatValue((float)parsedVal);
                             luceneSortedField = new NumericField(SortedFieldNamePrefix + field.Key, Field.Store.NO, true).SetFloatValue((float)parsedVal);
                             break;
-                        case "DOUBLE":
+                        case DataTypes.Double:
                             if (!TryConvert<double>(field.Value, out parsedVal))
                                 break;
                             luceneField = new NumericField(field.Key, Field.Store.YES, !Equals(lucenePolicy, Field.Index.NO)).SetDoubleValue((double)parsedVal);
                             luceneSortedField = new NumericField(SortedFieldNamePrefix + field.Key, Field.Store.NO, true).SetDoubleValue((double)parsedVal);
                             break;
-                        case "LONG":
+                        case DataTypes.Long:
                             if (!TryConvert<long>(field.Value, out parsedVal))
                                 break;
                             luceneField = new NumericField(field.Key, Field.Store.YES, !Equals(lucenePolicy, Field.Index.NO)).SetLongValue((long)parsedVal);
                             luceneSortedField = new NumericField(SortedFieldNamePrefix + field.Key, Field.Store.NO, true).SetLongValue((long)parsedVal);
                             break;
-                        case "DATE":
-                        case "DATETIME":
+                        case DataTypes.Date:
+                        case DataTypes.DateTime:
                             {
                                 SetDateTimeField(field.Key, field.Value, DateTools.Resolution.MILLISECOND, lucenePolicy, ref luceneField, ref luceneSortedField);
                                 break;
                             }
-                        case "DATE.YEAR":
+                        case DataTypes.DateYear:
                             {
                                 SetDateTimeField(field.Key, field.Value, DateTools.Resolution.YEAR, lucenePolicy, ref luceneField, ref luceneSortedField);
                                 break;
                             }
-                        case "DATE.MONTH":
+                        case DataTypes.DateMonth:
                             {
                                 SetDateTimeField(field.Key, field.Value, DateTools.Resolution.MONTH, lucenePolicy, ref luceneField, ref luceneSortedField);
                                 break;
                             }
-                        case "DATE.DAY":
+                        case DataTypes.DateDay:
                             {
                                 SetDateTimeField(field.Key, field.Value, DateTools.Resolution.DAY, lucenePolicy, ref luceneField, ref luceneSortedField);
                                 break;
                             }
-                        case "DATE.HOUR":
+                        case DataTypes.DateHour:
                             {
                                 SetDateTimeField(field.Key, field.Value, DateTools.Resolution.HOUR, lucenePolicy, ref luceneField, ref luceneSortedField);
                                 break;
                             }
-                        case "DATE.MINUTE":
+                        case DataTypes.DateMinute:
                             {
                                 SetDateTimeField(field.Key, field.Value, DateTools.Resolution.MINUTE, lucenePolicy, ref luceneField, ref luceneSortedField);
                                 break;
