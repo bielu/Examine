@@ -164,7 +164,7 @@ namespace Examine.Web.Demo.Controllers
         {
             var total = 0;
             var dataService = new TableDirectReaderDataService();
-            foreach (var simpleDataSet in dataService.GetRandomItems())
+            foreach (var simpleDataSet in dataService.GetRandomItems(10))
             {
                 ExamineManager.Instance.IndexProviderCollection["Simple2Indexer"]
                     .ReIndexNode(
