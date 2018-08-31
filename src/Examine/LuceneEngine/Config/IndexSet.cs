@@ -9,15 +9,9 @@ namespace Examine.LuceneEngine.Config
     {
 
         [ConfigurationProperty("SetName", IsRequired = true, IsKey = true)]
-        public string SetName
-        {
-            get
-            {
-                return (string)this["SetName"];
-            }
-        }
+        public string SetName => (string)this["SetName"];
 
-        private string m_IndexPath = "";
+        private string _indexPath = "";
 
         /// <summary>
         /// The folder path of where the lucene index is stored
@@ -31,15 +25,12 @@ namespace Examine.LuceneEngine.Config
         {
             get
             {
-                if (string.IsNullOrEmpty(m_IndexPath))
-                    m_IndexPath = (string)this["IndexPath"];
+                if (string.IsNullOrEmpty(_indexPath))
+                    _indexPath = (string)this["IndexPath"];
 
-                return m_IndexPath;
+                return _indexPath;
             }
-            set
-            {
-                m_IndexPath = value;
-            }
+            set => _indexPath = value;
         }
 
         /// <summary>

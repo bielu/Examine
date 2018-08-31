@@ -4,17 +4,17 @@ namespace Examine
 {
     public interface IIndexDataService
     {
-        ///// <summary>
-        ///// The Supported index types for this data source
-        ///// </summary>
-        //IEnumerable<string> IndexTypes { get; }
+        
+        //TODO: We need to modify this and pass in the indexer instance so that a data service can lazily be created
+        // and be created based on the indexer's properties
 
         /// <summary>
         /// Returns a collection of <see cref="IndexDocument"/>
         /// </summary>
+        /// <param name="indexer"></param>
         /// <param name="indexType"></param>
         /// <returns></returns>
-        IEnumerable<IndexDocument> GetAllData(string indexType);
+        IEnumerable<IndexDocument> GetAllData(IIndexer indexer, string indexType);
 
 
     }

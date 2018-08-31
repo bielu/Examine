@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
@@ -23,7 +24,9 @@ namespace Examine.AzureSearch
         private readonly Lazy<ISearchServiceClient> _indexClient;
         //TODO: maybe simple analyzer would be better just for query parsing?
         private readonly StandardAnalyzer _standardAnalyzer = new StandardAnalyzer(Version.LUCENE_29);
-        private readonly Lazy<string[]> _allFields;
+        private string[] _allFields;
+        private bool? _exists;
+        private static readonly string[] EmptyFields = new string[0];
 
         /// <summary>
         /// Constructor used for provider model
@@ -32,12 +35,6 @@ namespace Examine.AzureSearch
         {
             _searchClient = new Lazy<ISearchIndexClient>(CreateSearchIndexClient);
             _indexClient = new Lazy<ISearchServiceClient>(CreateSearchServiceClient);
-            _allFields = new Lazy<string[]>(() =>
-            {
-                var index = _indexClient.Value.Indexes.Get(_indexName);
-                var fields = index.Fields.Select(x => x.Name);
-                return fields.ToArray();
-            });
         }
 
         /// <summary>
@@ -54,6 +51,33 @@ namespace Examine.AzureSearch
             _searchServiceName = searchServiceName;
             _apiKey = apiKey;
             
+        }
+
+        public bool IndexExists
+        {
+            get
+            {
+                if (_exists == null || !_exists.Value)
+                {
+                    _exists = _indexClient.Value.Indexes.Exists(_indexName);
+                }
+                return _exists.Value;
+            }
+        }
+
+        public string[] AllFields
+        {
+            get
+            {
+                if (_allFields != null)
+                    return _allFields;
+
+                if (!IndexExists) return EmptyFields;
+
+                var index = _indexClient.Value.Indexes.Get(_indexName);
+                _allFields = index.Fields.Select(x => x.Name).ToArray();
+                return _allFields;
+            }
         }
 
         public override void Initialize(string name, NameValueCollection config)
@@ -101,8 +125,8 @@ namespace Examine.AzureSearch
 
         public override ISearchResults Search(string searchText, bool useWildcards)
         {
-            //if (!_indexClient.Value.Indexes.Exists(_indexName))
-            //    return EmptySearchResults.Instance;
+            if (!IndexExists)
+                return EmptySearchResults.Instance;
 
             if (!useWildcards)
             {
@@ -116,8 +140,8 @@ namespace Examine.AzureSearch
 
         public override ISearchResults Search(string searchText, bool useWildcards, string indexType)
         {
-            //if (!_indexClient.Value.Indexes.Exists(_indexName))
-            //    return EmptySearchResults.Instance;
+            if (!IndexExists)
+                return EmptySearchResults.Instance;
 
             var sc = CreateSearchCriteria(indexType);
             return TextSearchAllFields(searchText, useWildcards, sc);
@@ -127,8 +151,8 @@ namespace Examine.AzureSearch
         {
             if (searchParams == null) throw new ArgumentNullException(nameof(searchParams));
 
-            //if (!_indexClient.Value.Indexes.Exists(_indexName))
-            //    return EmptySearchResults.Instance;
+            if (!IndexExists)
+                return EmptySearchResults.Instance;
 
             var luceneParams = searchParams as LuceneSearchCriteria;
             if (luceneParams == null)
@@ -155,7 +179,7 @@ namespace Examine.AzureSearch
 
         public override ISearchCriteria CreateSearchCriteria(string type, BooleanOperation defaultOperation)
         {
-            return new LuceneSearchCriteria(type, _standardAnalyzer, _allFields.Value, true, defaultOperation);
+            return new LuceneSearchCriteria(type, _standardAnalyzer, AllFields, true, defaultOperation);
         }
 
         public override ISearchCriteria CreateSearchCriteria(string type)
@@ -163,22 +187,20 @@ namespace Examine.AzureSearch
             return CreateSearchCriteria(type, BooleanOperation.And);
         }
 
-
-
         private ISearchResults TextSearchAllFields(string searchText, bool useWildcards, ISearchCriteria sc)
         {
             var splitSearch = searchText.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
             if (useWildcards)
             {
-                sc = sc.GroupedOr(_allFields.Value,
+                sc = sc.GroupedOr(AllFields,
                     splitSearch.Select(x =>
                         new ExamineValue(Examineness.ComplexWildcard, x.MultipleCharacterWildcard().Value)).Cast<IExamineValue>().ToArray()
                 ).Compile();
             }
             else
             {
-                sc = sc.GroupedOr(_allFields.Value, splitSearch).Compile();
+                sc = sc.GroupedOr(AllFields, splitSearch).Compile();
             }
 
             return Search(sc);

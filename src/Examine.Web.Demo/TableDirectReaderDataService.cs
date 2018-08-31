@@ -101,7 +101,7 @@ namespace Examine.Web.Demo
             }
         }
 
-        IEnumerable<IndexDocument> IIndexDataService.GetAllData(string indexType)
+        IEnumerable<IndexDocument> IIndexDataService.GetAllData(IIndexer indexer, string indexType)
         {
             using (var db = new MyDbContext())
             {

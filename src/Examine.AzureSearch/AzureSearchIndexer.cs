@@ -16,15 +16,16 @@ using Microsoft.Azure.Search.Models;
 
 namespace Examine.AzureSearch
 {
-    public class AzureSearchIndexer : IndexProvider, IDisposable
+    public class AzureSearchIndexer : IndexProvider, IDisposable, IIndexSetIndexer, IIndexStatistics
     {
-        private string _indexName;
+        
         private string _searchServiceName;
         private string _apiKey;
         private bool? _exists;
         private ISearchIndexClient _indexer;
         private readonly Lazy<ISearchServiceClient> _client;
-        
+        private static readonly object ExistsLocker = new object();
+
         public AzureSearchIndexer()
         {
             _client = new Lazy<ISearchServiceClient>(CreateSearchServiceClient);
@@ -33,9 +34,9 @@ namespace Examine.AzureSearch
         public AzureSearchIndexer(string indexName, string searchServiceName, string apiKey, string analyzer, 
             IIndexCriteria indexerData, IIndexDataService dataService)
             : base(dataService)
-        {   
+        {
             //TODO: Need to 'clean' the name according to Azure Search rules
-            _indexName = indexName.ToLowerInvariant();
+            IndexSetName = indexName.ToLowerInvariant();
             _searchServiceName = searchServiceName;
             _apiKey = apiKey;
             Analyzer = analyzer;
@@ -49,7 +50,8 @@ namespace Examine.AzureSearch
         /// The name of the analyzer to use by default for fields
         /// </summary>
         public string Analyzer { get; private set; }
-        
+        public string IndexSetName { get; private set; }
+
         public override void Initialize(string name, NameValueCollection config)
         {
             base.Initialize(name, config);
@@ -59,16 +61,33 @@ namespace Examine.AzureSearch
 
             IndexerData = indexerData;
             //TODO: Need to 'clean' the name according to Azure Search rules
-            _indexName = indexSetName.ToLowerInvariant();
+            IndexSetName = indexSetName.ToLowerInvariant();
 
             if (config["analyzer"] != null)
             {
                 Analyzer = config["analyzer"];
             }
             
-            var azureSearchConfig = AzureSearchConfig.GetConfig(_indexName);
+            var azureSearchConfig = AzureSearchConfig.GetConfig(IndexSetName);
             _searchServiceName = azureSearchConfig.SearchServiceName;
             _apiKey = azureSearchConfig.ApiKey;
+        }
+
+        /// <summary>
+        /// Returns IIndexCriteria object from the IndexSet, used to configure the indexer during initialization
+        /// </summary>
+        /// <param name="indexSet"></param>
+        public virtual IIndexCriteria CreateIndexerData(IndexSet indexSet)
+        {
+            return indexSet.ToIndexCriteria();
+        }
+
+        public int GetDocumentCount() => Convert.ToInt32(GetIndexer().Documents.Count());
+
+        public int GetFieldCount()
+        {
+            var index = _client.Value.Indexes.Get(IndexSetName);
+            return index.Fields.Count;
         }
 
         private ISearchServiceClient CreateSearchServiceClient()
@@ -82,19 +101,22 @@ namespace Examine.AzureSearch
             var indexer = GetIndexer();
 
             //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk
-            var result = indexer.Documents.Index(IndexBatch.Delete(PrefixSpecialFieldName(IndexNodeIdFieldName), new[] { id }));
+            var result = indexer.Documents.Index(IndexBatch.Delete(FormatFieldName(IndexNodeIdFieldName), new[] { id }));
 
             onComplete(new KeyValuePair<string, string>(IndexNodeIdFieldName, id));
         }
 
         public override bool IndexExists()
         {
-            return _exists ?? (_exists = _client.Value.Indexes.Exists(_indexName)).Value;
+            lock (ExistsLocker)
+            {
+                return _exists ?? (_exists = _client.Value.Indexes.Exists(IndexSetName)).Value;
+            }
         }
         
         private ISearchIndexClient GetIndexer()
         {
-            return _indexer ?? (_indexer = _client.Value.Indexes.GetClient(_indexName));
+            return _indexer ?? (_indexer = _client.Value.Indexes.GetClient(IndexSetName));
         }
         
         protected override void EnsureIndex(bool forceOverwrite)
@@ -106,7 +128,7 @@ namespace Examine.AzureSearch
 
             if (indexExists)
             {
-                _client.Value.Indexes.Delete(_indexName);
+                _client.Value.Indexes.Delete(IndexSetName);
             }
 
             CreateIndex();
@@ -121,7 +143,7 @@ namespace Examine.AzureSearch
             var doc = new Document();
             foreach (var r in values)
             {
-                doc[r.Key] = r.Value;
+                doc[FormatFieldName(r.Key)] = r.Value;
             }
 
             //TODO: Check exception: https://docs.microsoft.com/en-us/azure/search/search-howto-dotnet-sdk
@@ -173,7 +195,7 @@ namespace Examine.AzureSearch
         private static void DeleteAllDocumentsOfType(ISearchIndexClient indexer, string type)
         {
             // Query all
-            var searchResult = indexer.Documents.Search<Document>($"{PrefixSpecialFieldName(IndexTypeFieldName)}:{type}");
+            var searchResult = indexer.Documents.Search<Document>($"{FormatFieldName(IndexTypeFieldName)}:{type}");
 
             if (searchResult.Results.Count == 0)
                 return;
@@ -186,7 +208,7 @@ namespace Examine.AzureSearch
             // Delete all
             try
             {
-                var batch = IndexBatch.Delete(PrefixSpecialFieldName(IndexNodeIdFieldName), toDelete);
+                var batch = IndexBatch.Delete(FormatFieldName(IndexNodeIdFieldName), toDelete);
                 var result = indexer.Documents.Index(batch);
             }
             catch (IndexBatchException ex)
@@ -206,52 +228,49 @@ namespace Examine.AzureSearch
                 var ad = new Document();
                 foreach (var i in d.RowData)
                 {
-                    if (i.Key.StartsWith(SpecialFieldPrefix))
-                    {
-                        ad[PrefixSpecialFieldName(i.Key)] = i.Value;
-                    }
-                    else
-                    {
-                        ad[i.Key] = i.Value;
-                    }
+                    ad[FormatFieldName(i.Key)] = i.Value;
                 }
                 yield return ad;
             }
         }
 
+        protected virtual Field CreateField(IIndexField field)
+        {
+            var dataType = FromExamineType(field.Type);
+            return new Field(FormatFieldName(field.Name), dataType)
+            {
+                IsSearchable = dataType == DataType.String,
+                IsSortable = field.EnableSorting,
+                Analyzer = dataType == DataType.String ? FromLuceneAnalyzer(Analyzer) : null
+            };
+        }
+
         private void CreateIndex()
         {
-            var fields = CombinedIndexerDataFields.SelectMany(x =>
+            lock (ExistsLocker)
             {
-                return x.Value.Select(f =>
+                var fields = CombinedIndexerDataFields.SelectMany(x => x.Value.Select(CreateField)).ToList();
+
+                //id must be string
+                fields.Add(new Field(FormatFieldName(IndexNodeIdFieldName), DataType.String)
                 {
-                    var dataType = FromExamineType(f.Type);
-                    return new Field(x.Key, dataType)
-                    {
-                        IsSearchable = dataType == DataType.String,
-                        IsSortable = f.EnableSorting,
-                        Analyzer = FromLuceneAnalyzer(Analyzer)
-                    };
+                    IsKey = true,
+                    IsSortable = true,
+                    IsSearchable = true,
+                    Analyzer = AnalyzerName.Whitespace
                 });
-            }).ToList();
 
-            //id must be string
-            fields.Add(new Field(PrefixSpecialFieldName(IndexNodeIdFieldName), DataType.String)
-            {
-                IsKey = true,
-                IsSortable = true,
-                Analyzer = AnalyzerName.Whitespace
-            });
+                fields.Add(new Field(FormatFieldName(IndexTypeFieldName), DataType.String)
+                {
+                    IsSearchable = true,
+                    Analyzer = AnalyzerName.Whitespace
+                });
 
-            fields.Add(new Field(PrefixSpecialFieldName(IndexTypeFieldName), DataType.String)
-            {
-                IsSearchable = true,
-                Analyzer = AnalyzerName.Whitespace
-            });
+                //TODO: We should have a custom event for devs to modify the AzureSearch data directly here
 
-            //TODO: We should have a custom event for devs to modify the AzureSearch data directly here
-
-            var index = _client.Value.Indexes.Create(new Index(_indexName, fields));
+                var index = _client.Value.Indexes.Create(new Index(IndexSetName, fields));
+                _exists = true;
+            }
         }
 
         private static AnalyzerName FromLuceneAnalyzer(string analyzer)
@@ -296,10 +315,14 @@ namespace Examine.AzureSearch
 
         }
 
-        private static string PrefixSpecialFieldName(string fieldName)
+        private static string FormatFieldName(string fieldName)
         {
-            //azure search requires that it starts with a letter
-            return $"z{fieldName}";
+            if (fieldName.StartsWith(SpecialFieldPrefix))
+            {
+                //azure search requires that it starts with a letter
+                return $"z{fieldName}";
+            }
+            return fieldName;
         }
 
         private static DataType FromExamineType(string type)

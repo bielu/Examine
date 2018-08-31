@@ -162,14 +162,13 @@ namespace Examine
 
         private bool IsIndexHealthy(IIndexer index, out Exception e)
         {
-            var luceneIndex = index as LuceneIndexer;
-            if (luceneIndex == null)
+            if (!(index is IIndexReadable luceneIndex))
             {
                 e = null;
                 return true;
             }
-            Exception ex;
-            var readable = luceneIndex.IsReadable(out ex);
+
+            var readable = luceneIndex.IsReadable(out var ex);
             e = ex;
             return readable;
         }
@@ -215,11 +214,32 @@ namespace Examine
         }
 
         /// <summary>
+        /// Reindex nodes for the providers specified
+        /// </summary>
+        /// <param name="node"></param>
+        /// <param name="type"></param>
+        /// <param name="providers"></param>
+        public void ReIndexNode(XElement node, string type, IEnumerable<IIndexer> providers)
+        {
+            _ReIndexNode(node, type, providers);
+        }
+
+        /// <summary>
         /// Deletes index for node for the specified providers
         /// </summary>
         /// <param name="nodeId"></param>
         /// <param name="providers"></param>
         public void DeleteFromIndex(string nodeId, IEnumerable<BaseIndexProvider> providers)
+        {
+            _DeleteFromIndex(nodeId, providers);
+        }
+
+        /// <summary>
+        /// Deletes index for node for the specified providers
+        /// </summary>
+        /// <param name="nodeId"></param>
+        /// <param name="providers"></param>
+        public void DeleteFromIndex(string nodeId, IEnumerable<IIndexer> providers)
         {
             _DeleteFromIndex(nodeId, providers);
         }
@@ -235,7 +255,8 @@ namespace Examine
         {
             _ReIndexNode(node, type, IndexProviderCollection);
         }
-        private void _ReIndexNode(XElement node, string type, IEnumerable<BaseIndexProvider> providers)
+
+        private static void _ReIndexNode(XElement node, string type, IEnumerable<IIndexer> providers)
         {
             foreach (var provider in providers)
             {
@@ -251,7 +272,7 @@ namespace Examine
         {
             _DeleteFromIndex(nodeId, IndexProviderCollection);
         }    
-        private void _DeleteFromIndex(string nodeId, IEnumerable<BaseIndexProvider> providers)
+        private static void _DeleteFromIndex(string nodeId, IEnumerable<IIndexer> providers)
         {
             foreach (var provider in providers)
             {

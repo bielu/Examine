@@ -12,7 +12,7 @@ namespace Examine.LuceneEngine.Providers
         /// Returns IIndexCriteria object from the IndexSet
         /// </summary>
         /// <param name="indexSet"></param>
-        public static  IIndexCriteria GetIndexerData(IndexSet indexSet)
+        public static  IIndexCriteria ToIndexCriteria(this IndexSet indexSet)
         {
             return new IndexCriteria(
                 indexSet.IndexAttributeFields.Cast<IIndexField>().ToArray(),
@@ -22,7 +22,7 @@ namespace Examine.LuceneEngine.Providers
                 indexSet.IndexParentId);
         }
 
-        public static bool ConfigureIndexSet(this BaseIndexProvider provider, 
+        public static bool ConfigureIndexSet(this IIndexSetIndexer provider, 
             string name, NameValueCollection config, 
             out IIndexCriteria indexerData, out string indexSetName)
         {
@@ -50,7 +50,7 @@ namespace Examine.LuceneEngine.Providers
                         indexSet.ReplaceTokensInIndexPath();
 
                         //get the index criteria and ensure folder
-                        indexerData = GetIndexerData(indexSet);
+                        indexerData = provider.CreateIndexerData(indexSet);
 
                         return true;
                     }
@@ -77,7 +77,7 @@ namespace Examine.LuceneEngine.Providers
                 indexSet.ReplaceTokensInIndexPath();
 
                 //get the index criteria and ensure folder
-                indexerData = GetIndexerData(indexSet);
+                indexerData = provider.CreateIndexerData(indexSet);
 
                 return true;
             }

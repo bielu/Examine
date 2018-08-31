@@ -29,7 +29,7 @@ namespace Examine.LuceneEngine.Providers
     ///<summary>
     /// Abstract object containing all of the logic used to use Lucene as an indexer
     ///</summary>
-    public abstract class LuceneIndexer : BaseIndexProvider, IDisposable
+    public abstract class LuceneIndexer : BaseIndexProvider, IDisposable, IIndexReadable, IIndexSetIndexer, IIndexStatistics
     {
         #region Constructors
 
@@ -187,6 +187,7 @@ namespace Examine.LuceneEngine.Providers
             IndexerData = indexerData;
             IndexSetName = indexSetName;
             var indexSet = IndexSets.Instance.Sets[IndexSetName];
+            
             //if tokens are declared in the path, then use them (i.e. {machinename} )
             indexSet.ReplaceTokensInIndexPath();
             //now set the index folders
@@ -219,6 +220,11 @@ namespace Examine.LuceneEngine.Providers
         #endregion
 
         #region Constants & Fields
+
+        private FileStream _logOutput;
+
+        [SecuritySafeCritical]
+        private Directory _directory;
 
         private volatile IndexWriter _writer;
 
@@ -300,111 +306,60 @@ namespace Examine.LuceneEngine.Providers
         #endregion
 
         #region Static Helpers
-
-        /// <summary>
-        /// Converts a DateTime to total number of milliseconds for storage in a numeric field
-        /// </summary>
-        /// <param name="t">The t.</param>
-        /// <returns></returns>
         public static long DateTimeToTicks(DateTime t)
         {
-            return t.Ticks;
+            return LuceneDateHelper.DateTimeToTicks(t);
         }
-
-        /// <summary>
-        /// Converts a DateTime to total number of seconds for storage in a numeric field
-        /// </summary>
-        /// <param name="t">The t.</param>
-        /// <returns></returns>
         public static double DateTimeToSeconds(DateTime t)
         {
-            return (t - DateTime.MinValue).TotalSeconds;
+            return LuceneDateHelper.DateTimeToSeconds(t);
         }
-
-        /// <summary>
-        /// Converts a DateTime to total number of minutes for storage in a numeric field
-        /// </summary>
-        /// <param name="t"></param>
-        /// <returns></returns>
         public static double DateTimeToMinutes(DateTime t)
         {
-            return (t - DateTime.MinValue).TotalMinutes;
+            return LuceneDateHelper.DateTimeToMinutes(t);
         }
-
-        /// <summary>
-        /// Converts a DateTime to total number of hours for storage in a numeric field
-        /// </summary>
-        /// <param name="t"></param>
-        /// <returns></returns>
         public static double DateTimeToHours(DateTime t)
         {
-            return (t - DateTime.MinValue).TotalHours;
+            return LuceneDateHelper.DateTimeToHours(t);
         }
-
-        /// <summary>
-        /// Converts a DateTime to total number of days for storage in a numeric field
-        /// </summary>
-        /// <param name="t"></param>
-        /// <returns></returns>
         public static double DateTimeToDays(DateTime t)
         {
-            return (t - DateTime.MinValue).TotalDays;
+            return LuceneDateHelper.DateTimeToDays(t);
         }
-
-        /// <summary>
-        /// Converts a number of milliseconds to a DateTime from DateTime.MinValue
-        /// </summary>
-        /// <param name="ticks"></param>
-        /// <returns></returns>
         public static DateTime DateTimeFromTicks(long ticks)
         {
-            return new DateTime(ticks);
+            return LuceneDateHelper.DateTimeFromTicks(ticks);
         }
-
-        /// <summary>
-        /// Converts a number of seconds to a DateTime from DateTime.MinValue
-        /// </summary>
-        /// <param name="seconds"></param>
-        /// <returns></returns>
         public static DateTime DateTimeFromSeconds(double seconds)
         {
-            return DateTime.MinValue.AddSeconds(seconds);
+            return LuceneDateHelper.DateTimeFromSeconds(seconds);
         }
-
-        /// <summary>
-        /// Converts a number of minutes to a DateTime from DateTime.MinValue
-        /// </summary>
-        /// <param name="minutes"></param>
-        /// <returns></returns>
         public static DateTime DateTimeFromMinutes(double minutes)
         {
-            return DateTime.MinValue.AddMinutes(minutes);
+            return LuceneDateHelper.DateTimeFromMinutes(minutes);
         }
-
-        /// <summary>
-        /// Converts a number of hours to a DateTime from DateTime.MinValue
-        /// </summary>
-        /// <param name="hours"></param>
-        /// <returns></returns>
         public static DateTime DateTimeFromHours(double hours)
         {
-            return DateTime.MinValue.AddHours(hours);
+            return LuceneDateHelper.DateTimeFromHours(hours);
         }
-
-        /// <summary>
-        /// Converts a number of days to a DateTime from DateTime.MinValue
-        /// </summary>
-        /// <param name="days"></param>
-        /// <returns></returns>
         public static DateTime DateTimeFromDays(double days)
         {
-            return DateTime.MinValue.AddDays(days);
+            return LuceneDateHelper.DateTimeFromDays(days);
         }
-
-
         #endregion
 
         #region Properties
+
+        [SecuritySafeCritical]
+        public int GetDocumentCount() => GetIndexWriter().GetIndexDocumentCount();
+
+        [SecuritySafeCritical]
+        public int GetFieldCount() => GetIndexWriter().GetIndexFieldCount();
+
+        /// <summary>
+        /// Gets the <see cref="IDirectoryFactory"/> if one is being used
+        /// </summary>
+        public IDirectoryFactory DirectoryFactory { get; private set; }
 
         /// <summary>
         /// this flag indicates if Examine should wait for the current index queue to be fully processed during appdomain shutdown
@@ -671,30 +626,16 @@ namespace Examine.LuceneEngine.Providers
         [SecuritySafeCritical]
         private void CreateNewIndex(Directory dir)
         {
-            IndexWriter writer = null;
             try
             {
-                if (IndexWriter.IsLocked(dir))
-                {
-                    //unlock it!
-                    IndexWriter.Unlock(dir);
-                }
-                //create the writer (this will overwrite old index files)
-                writer = new IndexWriter(dir, IndexingAnalyzer, true, IndexWriter.MaxFieldLength.UNLIMITED);
+                dir.CreateNewIndex(IndexingAnalyzer);
             }
             catch (Exception ex)
             {
                 OnIndexingError(new IndexingErrorEventArgs("An error occurred creating the index", -1, ex));
                 return;
             }
-            finally
-            {
-                if (writer != null)
-                {
-                    writer.Close();
-                }
-                _exists = true;
-            }
+            _exists = true;
         }
 
         /// <summary>
@@ -854,18 +795,20 @@ namespace Examine.LuceneEngine.Providers
         /// </summary>
         protected abstract void PerformIndexRebuild();
 
-        /// <summary>
-        /// Returns IIndexCriteria object from the IndexSet
-        /// </summary>
-        /// <param name="indexSet"></param>
+        [Obsolete("Use CreateIndexerData instead")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         protected virtual IIndexCriteria GetIndexerData(IndexSet indexSet)
         {
-            return new IndexCriteria(
-                indexSet.IndexAttributeFields.Cast<IIndexField>().ToArray(),
-                indexSet.IndexUserFields.Cast<IIndexField>().ToArray(),
-                indexSet.IncludeNodeTypes.ToList().Select(x => x.Name).ToArray(),
-                indexSet.ExcludeNodeTypes.ToList().Select(x => x.Name).ToArray(),
-                indexSet.IndexParentId);
+            return CreateIndexerData(indexSet);
+        }
+
+        /// <summary>
+        /// Returns IIndexCriteria object from the IndexSet, used to configure the indexer during initialization
+        /// </summary>
+        /// <param name="indexSet"></param>
+        public virtual IIndexCriteria CreateIndexerData(IndexSet indexSet)
+        {
+            return indexSet.ToIndexCriteria();
         }
 
         /// <summary>
@@ -893,38 +836,9 @@ namespace Examine.LuceneEngine.Providers
         /// </summary>
         /// <returns></returns>
         [SecuritySafeCritical]
-        internal bool IsReadable(out Exception ex)
+        public bool IsReadable(out Exception ex)
         {
-            if (_writer != null)
-            {
-                try
-                {
-                    using (_writer.GetReader())
-                    {
-                        ex = null;
-                        return true;
-                    }
-                }
-                catch (Exception e)
-                {
-                    ex = e;
-                    return false;
-                }
-            }
-
-            try
-            {
-                using (IndexReader.Open(GetLuceneDirectory(), true))
-                {                    
-                }
-                ex = null;
-                return true;
-            }
-            catch (Exception e)
-            {
-                ex = e;
-                return false;
-            }
+            return _writer.IsReadable(GetLuceneDirectory, out ex);
         }
 
         /// <summary>
@@ -998,26 +912,6 @@ namespace Examine.LuceneEngine.Providers
                 OnIndexingError(new IndexingErrorEventArgs("Error deleting Lucene index", nodeId, ee));
                 return false;
             }
-        }
-
-        /// <summary>
-        /// Ensures that the node being indexed is of a correct type and is a descendent of the parent id specified.
-        /// </summary>
-        /// <param name="node"></param>
-        /// <returns></returns>
-        protected virtual bool ValidateDocument(XElement node)
-        {
-            //check if this document is of a correct type of node type alias
-            if (IndexerData.IncludeNodeTypes.Any())
-                if (!IndexerData.IncludeNodeTypes.Contains(node.ExamineNodeTypeAlias()))
-                    return false;
-
-            //if this node type is part of our exclusion list, do not validate
-            if (IndexerData.ExcludeNodeTypes.Any())
-                if (IndexerData.ExcludeNodeTypes.Contains(node.ExamineNodeTypeAlias()))
-                    return false;
-
-            return true;
         }
 
         /// <summary>
@@ -1587,7 +1481,7 @@ namespace Examine.LuceneEngine.Providers
                 case IndexOperationType.Add:
 
                     //TODO: We can validate this way before this occurs
-                    if (ValidateDocument(item.Item.DataToIndex, () => new IndexingNodeDataEventArgs(item.Item.DataToIndex, int.Parse(item.Item.Id), null, item.Item.IndexType)))
+                    if (ValidateDocument(item.Item.DataToIndex))
                     {
                         //var added = ProcessIndexQueueItem(item, inMemoryWriter);
                         var added = ProcessIndexQueueItem(item, writer);
@@ -1598,6 +1492,7 @@ namespace Examine.LuceneEngine.Providers
                         //do the delete but no commit - it may or may not exist in the index but since it is not 
                         // valid it should definitely not be there.
                         ProcessDeleteQueueItem(item, writer, false);
+                        OnIgnoringNode(new IndexingNodeDataEventArgs(item.Item.DataToIndex, int.Parse(item.Item.Id), null, item.Item.IndexType));
                     }
                     break;
                 case IndexOperationType.Delete:
@@ -1675,14 +1570,6 @@ namespace Examine.LuceneEngine.Providers
             return DirectoryFactory.CreateDirectory(this, s);
         }
 
-        [SecuritySafeCritical]
-        private Directory _directory;
-
-        /// <summary>
-        /// Gets the <see cref="IDirectoryFactory"/> if one is being used
-        /// </summary>
-        public IDirectoryFactory DirectoryFactory { get; private set; }
-
         /// <summary>
         /// Returns the Lucene Directory used to store the index
         /// </summary>
@@ -1692,8 +1579,6 @@ namespace Examine.LuceneEngine.Providers
         {
             return _writer != null ? _writer.GetDirectory() : _directory;
         }
-
-        private FileStream _logOutput;
 
         /// <summary>
         /// Used to create an index writer - this is called in GetIndexWriter (and therefore, GetIndexWriter should not be overridden)
@@ -2006,8 +1891,7 @@ namespace Examine.LuceneEngine.Providers
         }
 
         #endregion
-
-
+        
     }
 }
 

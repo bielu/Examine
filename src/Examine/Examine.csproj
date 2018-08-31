@@ -109,6 +109,8 @@
     <Compile Include="DeleteIndexEventArgs.cs" />
     <Compile Include="DictionaryExtensions.cs" />
     <Compile Include="IIndexDataService.cs" />
+    <Compile Include="IIndexReadable.cs" />
+    <Compile Include="IIndexStatistics.cs" />
     <Compile Include="IndexDocument.cs" />
     <Compile Include="LuceneEngine\DataTypes.cs" />
     <Compile Include="LuceneEngine\Directories\SyncAspNetCodeGenDirectoryFactory.cs" />
@@ -161,8 +163,11 @@
     <Compile Include="IndexOperationType.cs" />
     <Compile Include="LuceneEngine\Directories\IDirectoryFactory.cs" />
     <Compile Include="LuceneEngine\Providers\ErrorCheckingScoringBooleanQueryRewrite.cs" />
+    <Compile Include="LuceneEngine\Providers\IIndexSetIndexer.cs" />
     <Compile Include="LuceneEngine\Providers\IndexProviderExtensions.cs" />
+    <Compile Include="LuceneEngine\Providers\LuceneDateHelper.cs" />
     <Compile Include="LuceneEngine\Providers\LuceneIndexer.cs" />
+    <Compile Include="LuceneEngine\Providers\LuceneIndexer2.cs" />
     <Compile Include="LuceneEngine\Providers\LuceneMemorySearcher.cs" />
     <Compile Include="LuceneEngine\Providers\LuceneSearcher.cs" />
     <Compile Include="LuceneEngine\Providers\MultiIndexSearcher.cs" />

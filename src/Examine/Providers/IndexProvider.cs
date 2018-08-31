@@ -21,7 +21,7 @@ namespace Examine.Providers
         }
 
         public string[] IndexTypes { get; private set; }
-        public IIndexDataService DataService { get; private set; }
+        public virtual IIndexDataService DataService { get; private set; }
 
         public override void Initialize(string name, NameValueCollection config)
         {
@@ -38,10 +38,6 @@ namespace Examine.Providers
                 var serviceType = TypeHelper.FindType(config["dataService"]);
                 DataService = (IIndexDataService)Activator.CreateInstance(serviceType);
             }
-            else
-            {
-                throw new ArgumentNullException("The dataService property must be specified");
-            }
         }
 
         public override void ReIndexNode(XElement node, string type)
@@ -54,8 +50,12 @@ namespace Examine.Providers
                 return;
             }
 
-            if (!ValidateDocument(node, () => new IndexingNodeDataEventArgs(node, (int)node.Attribute("id"), type)))
+            if (!ValidateDocument(node))
+            {
+                var ignoreArgs = new IndexingNodeDataEventArgs(node, (int) node.Attribute("id"), type);
+                OnIgnoringNode(ignoreArgs);
                 return;
+            }   
 
             var values = GetDataToIndex(node, type, null);
 
@@ -70,19 +70,21 @@ namespace Examine.Providers
             });
         }
 
-        public override void IndexAll(string type)
+        public sealed override void IndexAll(string type)
         {
             if (IndexTypes != null && !IndexTypes.Contains(type))
             {
                 return;
             }
 
-            var data = DataService.GetAllData(type)
+            var data = DataService?.GetAllData(this, type)
                 .Select(x =>
                 {
                     x.RowData = GetDataToIndex(x, type);
                     return x;
                 });
+
+            if (data == null) return;
 
             var indexingArgs = new IndexingNodesEventArgs(IndexerData, type);
             OnNodesIndexing(indexingArgs);
@@ -94,7 +96,7 @@ namespace Examine.Providers
             });
         }
 
-        public override void DeleteFromIndex(string nodeId)
+        public sealed override void DeleteFromIndex(string nodeId)
         {
             DeleteItem(nodeId, pair => { OnIndexDeleted(new DeleteIndexEventArgs(pair)); });
         }

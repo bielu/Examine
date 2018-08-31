@@ -62,6 +62,7 @@ namespace Examine.AzureSearch
                 };
                 foreach (var d in x.Document)
                 {
+                    if (d.Key == null || d.Value == null) continue;
                     r.Fields[d.Key] = d.Value.ToString();
                 }
 
@@ -77,6 +78,13 @@ namespace Examine.AzureSearch
             {
                 //it's a lucene query    
                 query = _luceneQuery.ToString();
+
+                //HACK! we need to prefix any field starting with __ with z__ due to Azure Search not supporting fields starting with __
+                //TODO: We need to fix this properly, there could be __ in the search text so this could cause problems, we can probably do 
+                //this by iterating over the clauses of the _luceneQuery
+                
+                query = query.Replace("__", "z__");
+
                 isLucene = true;
             }
 

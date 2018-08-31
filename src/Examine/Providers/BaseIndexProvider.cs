@@ -260,30 +260,18 @@ namespace Examine.Providers
         /// Ensures that the node being indexed is of a correct type and is a descendent of the parent id specified.
         /// </summary>
         /// <param name="node"></param>
-        /// <param name="ignoringNodeArgs"></param>
         /// <returns></returns>
-        protected virtual bool ValidateDocument(XElement node, Func<IndexingNodeDataEventArgs> ignoringNodeArgs)
+        protected virtual bool ValidateDocument(XElement node)
         {
             //check if this document is of a correct type of node type alias
             if (IndexerData.IncludeNodeTypes.Any())
                 if (!IndexerData.IncludeNodeTypes.Contains(node.ExamineNodeTypeAlias()))
-                {
-                    if (ignoringNodeArgs != null)
-                        OnIgnoringNode(ignoringNodeArgs());
-
                     return false;
-                }
-                    
 
             //if this node type is part of our exclusion list, do not validate
             if (IndexerData.ExcludeNodeTypes.Any())
                 if (IndexerData.ExcludeNodeTypes.Contains(node.ExamineNodeTypeAlias()))
-                {
-                    if (ignoringNodeArgs != null)
-                        OnIgnoringNode(ignoringNodeArgs());
-
                     return false;
-                }
 
             return true;
         }
