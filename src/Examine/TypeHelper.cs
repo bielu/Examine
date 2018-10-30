@@ -7,6 +7,7 @@ using System.Web.Hosting;
 
 namespace Examine
 {
+    //TODO: We need to change this name, or make it internal again it conflicts with stuff in umb
     public static class TypeHelper
     {
         /// <summary>

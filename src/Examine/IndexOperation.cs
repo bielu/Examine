@@ -1,3 +1,5 @@
+using System;
+
 namespace Examine
 {
     /// <summary>
@@ -30,5 +32,7 @@ namespace Examine
         /// The operation.
         /// </value>
         public IndexOperationType Operation { get; set; }
+
+        public Action OnComplete { get; set; }
     }
 }

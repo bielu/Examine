@@ -62,7 +62,7 @@ $buildXmlFile = (Join-Path $BuildFolder "build.xml")
 $SolutionInfoPath = Join-Path -Path $SolutionRoot -ChildPath "SolutionInfo.cs"
 
 # Set the copyright
-$Copyright = "Copyright © Shannon Deminick " + (Get-Date).year
+$Copyright = "Copyright Â© Shannon Deminick " + (Get-Date).year
 (gc -Path $SolutionInfoPath) `
 	-replace "(?<=AssemblyCopyright\(`").*(?=`"\))", $Copyright |
 	sc -Path $SolutionInfoPath -Encoding UTF8

@@ -90,6 +90,8 @@ namespace Examine.AzureSearch
 
             //TODO: Get sorting working
 
+            //TODO: We need to escape the resulting query
+
 
             var result = _docs.Search(query, new SearchParameters
             {
