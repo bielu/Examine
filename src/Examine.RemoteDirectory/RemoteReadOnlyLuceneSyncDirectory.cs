@@ -1,7 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Examine.Logging;
 using Lucene.Net.Store;
 
@@ -11,6 +15,7 @@ namespace Examine.RemoteDirectory
     {
         private readonly string _cacheDirectoryPath;
         private readonly string _cacheDirectoryName;
+        private NoDedicatedThreadRebuildQueue _rebuildQueue;
         private string _oldIndexFolderName;
 
         public RemoteReadOnlyLuceneSyncDirectory(IRemoteDirectory remoteDirectory,
@@ -76,12 +81,12 @@ namespace Examine.RemoteDirectory
                     }
                     else
                     {
-                        RebuildCache();
+                        HandleOutOfSync();
                     }
                 }
                 else
                 {
-                    RebuildCache();
+                    HandleOutOfSync();
                 }
             }
         }
@@ -102,16 +107,14 @@ namespace Examine.RemoteDirectory
         protected override void HandleOutOfSync()
         
         {
-
             lock (RebuildLock)
             {
-                RebuildCache();
-                HandleOutOfSyncDirectory();
+                _rebuildQueue.Enqueue(RebuildCache(true));
             }
         }
 
         //todo: make that as background task. Need input from someone how to handle that correctly as now it is as sync task to avoid issues, but need be change
-        public override void RebuildCache()
+        protected async Task RebuildCache(bool handle = false)
         {
             lock (RebuildLock)
             {
@@ -182,6 +185,10 @@ namespace Examine.RemoteDirectory
                 }
 
                 _oldIndexFolderName = tempDir.Name;
+                if (handle)
+                {
+                    HandleOutOfSyncDirectory();
+                }
             }
         }
         internal override string[] GetAllBlobFiles()
@@ -189,6 +196,57 @@ namespace Examine.RemoteDirectory
             lock (RebuildLock)
             {
              return  base.GetAllBlobFiles();
+            }
+        }
+        public class NoDedicatedThreadRebuildQueue
+        {
+            private Queue<Task> _jobs = new Queue<Task>();
+            private bool _delegateQueuedOrRunning = false;
+ 
+            public void Enqueue(Task job)
+            {
+                lock (_jobs)
+                {
+                    _jobs.Enqueue(job);
+                    if (_jobs.Count > 1)
+                    {
+                        _jobs.Clear();
+                    }
+                    if (!_delegateQueuedOrRunning)
+                    {
+                        _delegateQueuedOrRunning = true;
+                        ThreadPool.UnsafeQueueUserWorkItem(ProcessQueuedItems, null);
+                    }
+                }
+            }
+ 
+            private void ProcessQueuedItems(object ignored)
+            {
+                while (true)
+                {
+                    Task item;
+                    lock (_jobs)
+                    {
+                        if (_jobs.Count == 0)
+                        {
+                            _delegateQueuedOrRunning = false;
+                            break;
+                        }
+ 
+                        item = _jobs.Dequeue();
+                    }
+ 
+                    try
+                    {
+                       item.RunSynchronously();
+                       
+                    }
+                    catch
+                    {
+                        ThreadPool.UnsafeQueueUserWorkItem(ProcessQueuedItems, null);
+                        throw;
+                    }
+                }
             }
         }
     }

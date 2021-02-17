@@ -139,28 +139,6 @@ namespace Examine.RemoteDirectory
                 CacheDirectory.DeleteFile(file);
             }
         }
-
-        public virtual void RebuildCache()
-        {
-            LoggingService.Log(new LogEntry(LogLevel.Info,null,$"Rebuilding index cache {RootFolder}"));
-            try
-            {
-                ClearCache();
-            }
-            catch (Exception e)
-            {
-                LoggingService.Log(new LogEntry(LogLevel.Error,e,$"Exception thrown while rebuilding cache for {RootFolder}"));
-
-            }
-
-            foreach (string file in GetAllBlobFiles())
-            {
-                CacheDirectory.TouchFile(file);
-                RemoteDirectory.SyncFile(CacheDirectory, file, CompressBlobs);
-            }
-        }
-
-
         public override string[] ListAll()
         {
             var blobFiles = CheckDirty();
