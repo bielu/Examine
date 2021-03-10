@@ -18,7 +18,7 @@ namespace Examine.RemoteDirectory
     {
         private volatile bool _dirty = true;
         private bool _inSync = false;
-        private readonly object _locker = new object();
+        internal readonly object _locker = new object();
 
         protected LockFactory _lockFactory;
         public readonly IRemoteDirectory RemoteDirectory;
@@ -141,6 +141,7 @@ namespace Examine.RemoteDirectory
         }
         public override string[] ListAll()
         {
+          
             var blobFiles = CheckDirty();
 
             return _inSync
@@ -150,6 +151,7 @@ namespace Examine.RemoteDirectory
 
         internal virtual string[] GetAllBlobFiles()
         {
+            
             IEnumerable<string> results = GetAllBlobFileNames();
 
             var names = results.Where(x => !x.EndsWith(".lock")).ToArray();
@@ -158,12 +160,14 @@ namespace Examine.RemoteDirectory
 
         protected virtual IEnumerable<string> GetAllBlobFileNames()
         {
+            LoggingService.Log(new LogEntry(LogLevel.Info, null, $"Getting list of all blobs"));
             return RemoteDirectory.GetAllRemoteFileNames();
         }
 
         /// <summary>Returns true if a file with the given name exists. </summary>
         public override bool FileExists(string name)
         {
+            SetDirty();
             CheckDirty();
 
             if (_inSync)
@@ -188,6 +192,7 @@ namespace Examine.RemoteDirectory
         /// <summary>Returns the time the named file was last modified. </summary>
         public override long FileModified(string name)
         {
+            SetDirty();
             CheckDirty();
 
             if (_inSync)
@@ -251,6 +256,7 @@ namespace Examine.RemoteDirectory
         /// <summary>Returns the length of a file in the syncDirectory. </summary>
         public override long FileLength(string name)
         {
+            SetDirty();
             CheckDirty();
 
             if (_inSync)
@@ -267,13 +273,14 @@ namespace Examine.RemoteDirectory
         public override IndexOutput CreateOutput(string name)
         {
             SetDirty();
-
+            LoggingService.Log(new LogEntry(LogLevel.Info, null, $"Opening output"));
             return _remoteIndexOutputFactory.CreateIndexOutput(this, name, LoggingService);
         }
 
         /// <summary>Returns a stream reading an existing file. </summary>
         public override IndexInput OpenInput(string name)
         {
+            SetDirty();
             CheckDirty();
 
             if (_inSync)
@@ -351,6 +358,11 @@ namespace Examine.RemoteDirectory
         /// </returns>
         public virtual string[] CheckDirty()
         {
+            return HandleCheckDirty();
+        }
+
+        public virtual string[] HandleCheckDirty()
+        {
             if (_dirty)
             {
                 lock (_locker)
@@ -358,6 +370,8 @@ namespace Examine.RemoteDirectory
                     //double check locking
                     if (_dirty)
                     {
+                        LoggingService.Log(new LogEntry(LogLevel.Info,null,$"Checking synchronization for {RootFolder}, stack trace: {Environment.StackTrace.ToString()}"));
+
                         var blobFiles = GetAllBlobFiles();
 
                         try
@@ -365,13 +379,16 @@ namespace Examine.RemoteDirectory
                             //these methods don't throw exceptions, will return -1 if something has gone wrong
                             // in which case we'll consider them not in sync
                             var masterSeg = SegmentInfos.GetCurrentSegmentGeneration(blobFiles);
-                            var localSeg = SegmentInfos.GetCurrentSegmentGeneration(CacheDirectory);
-                            _inSync = masterSeg == localSeg && masterSeg != -1;
+                            var localSeg = CacheDirectory != null ? SegmentInfos.GetCurrentSegmentGeneration(CacheDirectory) : -1;
+                            _inSync = masterSeg == localSeg && masterSeg != -1 && localSeg != -1;
+                            LoggingService.Log(new LogEntry(LogLevel.Info,null,$"Synchronization value: {_inSync}"));
+
                         }
-                        catch (Exception)
+                        catch (Exception e)
                         {
                             //these exceptions is mostly when local cache is broken and cant read current segments as file get corrupted/removed
                             //so we need resync
+                            LoggingService.Log(new LogEntry(LogLevel.Error,e,$"Local cache probably doesnt exists {RootFolder}, but there is exception"));
                             _inSync = false;
                         }
 
@@ -388,7 +405,6 @@ namespace Examine.RemoteDirectory
 
             return null;
         }
-
         /// <summary>
         /// Checks dirty flag and sets the _inSync flag after querying the blob strorage vs local storage segment gen
         /// </summary>
@@ -407,6 +423,8 @@ namespace Examine.RemoteDirectory
         protected virtual void HandleOutOfSync()
         {
             //Do nothing
+            LoggingService.Log(new LogEntry(LogLevel.Info,null,$"Local cache probably doesnt exists {RootFolder}, but there is exception"));
+
         }
 
         public override void SetDirty()
@@ -416,6 +434,16 @@ namespace Examine.RemoteDirectory
                 lock (_locker)
                 {
                     _dirty = true;
+                }
+            }
+        }
+        public void unSetDirty()
+        {
+            if (!_dirty)
+            {
+                lock (_locker)
+                {
+                    _dirty = false;
                 }
             }
         }

@@ -218,6 +218,7 @@ namespace Examine.AzureDirectory
             }
             catch (Azure.RequestFailedException ex) when (ex.Status == 409)
             {
+                _loggingService.Log(new LogEntry(LogLevel.Error,ex,$"File already exists"));
                 return false;
             }
         }
@@ -234,15 +235,19 @@ namespace Examine.AzureDirectory
 
         public bool Upload(MemoryStream stream, string fileName)
         {
+            _loggingService.Log(new LogEntry(LogLevel.Info,null,$"PUT {stream.Length} bytes to {fileName} in cloud"));
             var blob = _blobContainer.GetBlobClient(_rootFolderName + fileName);
             EnsureContainer(_containerName);
             try
             {
+                
                 blob.Upload(stream);
                 return true;
             }
             catch (RequestFailedException ex) when (ex.Status == 409) //already exists unable to overwrite
             {
+                _loggingService.Log(new LogEntry(LogLevel.Error,ex,$"Upload {fileName} to cloud failed"));
+
                 return false;
             }
         }

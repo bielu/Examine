@@ -447,6 +447,11 @@ namespace Examine.LuceneEngine.Providers
         /// </summary>
         public void EnsureIndex(bool forceOverwrite)
         {
+            if (this._directory is ExamineDirectory examineDirectory && examineDirectory.IsReadOnly)
+            {
+                examineDirectory.SetDirty();
+                examineDirectory.CheckDirtyWithoutWriter();
+            }
             if (!forceOverwrite && _exists.HasValue && _exists.Value) return;
             if (isReadonly) return;
             var indexExists = IndexExists();
@@ -1313,11 +1318,7 @@ namespace Examine.LuceneEngine.Providers
         /// <returns></returns>
         private IndexWriter CreateIndexWriter()
         {
-            if (this._directory is ExamineDirectory examineDirectory && examineDirectory.IsReadOnly)
-            {
-               examineDirectory.SetDirty();
-                examineDirectory.CheckDirtyWithoutWriter();
-            }
+           
             Directory dir = GetLuceneDirectory();
             // Unfortunatley if the appdomain is taken down this will remain locked, so we can 
             // ensure that it's unlocked here in that case.
@@ -1384,7 +1385,8 @@ namespace Examine.LuceneEngine.Providers
                 {
                     //This line is creating a lock on read directories
                     //Check dirty first so the folder is not locked.
-                    examineDirectory.CheckDirtyWithoutWriter();
+                    //do we need check that at all? for now commenting out
+                    //examineDirectory.CheckDirtyWithoutWriter();
                     writer = new ExamineIndexWriter(d, FieldAnalyzer, false, examineDirectory.GetDeletionPolicy(),
                         IndexWriter.MaxFieldLength.UNLIMITED);
                 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security;
 using Lucene.Net.Index;
 using Lucene.Net.Store;
@@ -57,9 +58,23 @@ namespace Examine.LuceneEngine
             {
                 if (!_writers.TryGetValue(dir.GetLockId(), out IndexWriter d))
                 {
-                  var  readers = new Queue<Tuple<IndexWriter, DateTime>>();
-                  readers.Enqueue(new Tuple<IndexWriter, DateTime>(d, DateTime.Now));
-                  _oldWriters.Add(dir, readers);
+                    
+                  
+                  if (_oldWriters.ContainsKey(dir))
+                  {
+                      if (!_oldWriters[dir].Any(x => x.Item1 == d))
+                      {
+                          _oldWriters[dir].Enqueue(new Tuple<IndexWriter, DateTime>(d, DateTime.Now)); 
+                      }
+                  }
+
+                  else
+                  {
+                      var  readers = new Queue<Tuple<IndexWriter, DateTime>>();
+                      readers.Enqueue(new Tuple<IndexWriter, DateTime>(d, DateTime.Now));
+                      _oldWriters.Add(dir, readers);
+                  }
+                  
                 }
 
                 _writers.TryRemove(dir.GetLockId(), out d);
