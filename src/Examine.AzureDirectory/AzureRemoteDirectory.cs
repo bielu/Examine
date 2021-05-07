@@ -109,6 +109,7 @@ namespace Examine.AzureDirectory
             {
                 _loggingService.Log(new LogEntry(LogLevel.Error, e,
                     $"GET {fileName} RETREIVED failed"));
+                success = false;
             }
 
             return success;

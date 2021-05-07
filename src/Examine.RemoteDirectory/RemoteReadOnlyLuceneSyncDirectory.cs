@@ -32,7 +32,7 @@ namespace Examine.RemoteDirectory
             IsReadOnly = true;
             if (CacheDirectory == null)
             {
-                LoggingService.Log(new LogEntry(LogLevel.Error, null,
+                LoggingService.Log(new LogEntry(LogLevel.Info, null,
                     $"CacheDirectory null. Creating or rebuilding cache"));
 
                 CreateOrReadCache();
@@ -252,6 +252,8 @@ namespace Examine.RemoteDirectory
                             {
                                 LoggingService.Log(new LogEntry(LogLevel.Error, null, $"Rebuilding cache failed"));
                                 newIndex.Dispose();
+                                handle = false;
+                                return;
                             }
                         }
 

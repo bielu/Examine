@@ -51,11 +51,17 @@ namespace Examine.LuceneEngine.Providers
             {
                 isReadonly = dir.IsReadOnly;
                 ExamineDir = dir;
+                IsExamineDirectory = true;
+                _examineIndexDeletionPolicy = dir.GetDeletionPolicy();
+                _examineIndexMergeScheduler = dir.GetMergeScheduler();
                 dir.HandleOutOfSyncEvent += DirOnHandleOutOfSyncEvent;
             }
         }
 
+        private readonly IndexDeletionPolicy _examineIndexDeletionPolicy;
+
         public ExamineDirectory ExamineDir { get; set; }
+        private bool IsExamineDirectory { get; set; } = false;
 
         private void DirOnHandleOutOfSyncEvent(object sender, EventArgs e)
         {
@@ -127,6 +133,10 @@ namespace Examine.LuceneEngine.Providers
             if (luceneDirectory is ExamineDirectory dir)
             {
                 isReadonly = dir.IsReadOnly;
+                ExamineDir = dir;
+                IsExamineDirectory = true;
+                _examineIndexDeletionPolicy = dir.GetDeletionPolicy();
+                _examineIndexMergeScheduler = dir.GetMergeScheduler();
                 dir.HandleOutOfSyncEvent += DirOnHandleOutOfSyncEvent;
             }
 
@@ -319,6 +329,7 @@ namespace Examine.LuceneEngine.Providers
         public Analyzer DefaultAnalyzer { get; }
 
         private PerFieldAnalyzerWrapper _fieldAnalyzer;
+        private readonly MergeScheduler _examineIndexMergeScheduler;
 
         public PerFieldAnalyzerWrapper FieldAnalyzer => _fieldAnalyzer
                                                         ?? (_fieldAnalyzer =
@@ -447,10 +458,10 @@ namespace Examine.LuceneEngine.Providers
         /// </summary>
         public void EnsureIndex(bool forceOverwrite)
         {
-            if (this._directory is ExamineDirectory examineDirectory && examineDirectory.IsReadOnly)
+            if (IsExamineDirectory && ExamineDir.IsReadOnly)
             {
-                examineDirectory.SetDirty();
-                examineDirectory.CheckDirtyWithoutWriter();
+                ExamineDir.SetDirty();
+                ExamineDir.CheckDirtyWithoutWriter();
             }
             if (!forceOverwrite && _exists.HasValue && _exists.Value) return;
             if (isReadonly) return;
@@ -1088,7 +1099,7 @@ namespace Examine.LuceneEngine.Providers
                 if (!RunAsync || block)
                 {
                     //commit the changes (this will process the deletes too)
-                    if (_directory is ExamineDirectory examineDirectory)
+                    if (IsExamineDirectory)
                     {
                         //Calling commit causes fdt,fdx,fnm,frq,nrm,prx,tii,tis,tvd,tvf,tvx files to be deleted.
                         //TODO: 
@@ -1384,15 +1395,15 @@ namespace Examine.LuceneEngine.Providers
             if (d == null) throw new ArgumentNullException(nameof(d));
 
             IndexWriter writer;
-            if (_directory is ExamineDirectory examineDirectory)
+            if (IsExamineDirectory)
             {
-                if (examineDirectory.GetDeletionPolicy() != null)
+                if (_examineIndexDeletionPolicy != null)
                 {
                     //This line is creating a lock on read directories
                     //Check dirty first so the folder is not locked.
                     //do we need check that at all? for now commenting out
                     //examineDirectory.CheckDirtyWithoutWriter();
-                    writer = new ExamineIndexWriter(d, FieldAnalyzer, false, examineDirectory.GetDeletionPolicy(),
+                    writer = new ExamineIndexWriter(d, FieldAnalyzer, false, _examineIndexDeletionPolicy,
                         IndexWriter.MaxFieldLength.UNLIMITED);
                 }
                 else
@@ -1400,12 +1411,12 @@ namespace Examine.LuceneEngine.Providers
                     writer = new ExamineIndexWriter(d, FieldAnalyzer, false, IndexWriter.MaxFieldLength.UNLIMITED);
                 }
 
-                if (examineDirectory.GetMergeScheduler() != null)
+                if (_examineIndexMergeScheduler != null)
                 {
-                    writer.SetMergeScheduler(examineDirectory.GetMergeScheduler());
+                    writer.SetMergeScheduler(_examineIndexMergeScheduler);
                 }
 
-                var mergePolicy = examineDirectory.GetMergePolicy(writer);
+                var mergePolicy = ExamineDir.GetMergePolicy(writer);
                 if (mergePolicy != null)
                 {
                     writer.SetMergePolicy(mergePolicy);
