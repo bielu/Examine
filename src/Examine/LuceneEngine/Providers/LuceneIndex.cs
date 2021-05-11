@@ -122,7 +122,11 @@ namespace Examine.LuceneEngine.Providers
             IReadOnlyDictionary<string, IFieldValueTypeFactory> indexValueTypesFactory = null)
             : base(name, fieldDefinitions ?? new FieldDefinitionCollection(), validator)
         {
-            _indexQueue = new BlockingCollection<IEnumerable<IndexOperation>>(queueCapacity);
+            if (_indexQueue == null)
+            {
+                _indexQueue = new BlockingCollection<IEnumerable<IndexOperation>>(queueCapacity);
+
+            }
             _committer = new IndexCommiter(this);
 
             LuceneIndexFolder = null;
@@ -189,7 +193,11 @@ namespace Examine.LuceneEngine.Providers
             IReadOnlyDictionary<string, IFieldValueTypeFactory> indexValueTypesFactory = null)
             : base(name, fieldDefinitions, validator)
         {
-            _indexQueue = new BlockingCollection<IEnumerable<IndexOperation>>(queueCapacity);
+            if (_indexQueue == null)
+            {
+                _indexQueue = new BlockingCollection<IEnumerable<IndexOperation>>(queueCapacity);
+
+            }
             _committer = new IndexCommiter(this);
 
             _writer = writer ?? throw new ArgumentNullException(nameof(writer));
@@ -286,7 +294,7 @@ namespace Examine.LuceneEngine.Providers
         /// <remarks>
         /// Each item in the collection is a collection itself, this allows us to have lazy access to a collection as part of the queue if added in bulk
         /// </remarks>
-        private readonly BlockingCollection<IEnumerable<IndexOperation>> _indexQueue;
+        private static BlockingCollection<IEnumerable<IndexOperation>> _indexQueue;
 
         /// <summary>
         /// The async task that runs during an async indexing operation
