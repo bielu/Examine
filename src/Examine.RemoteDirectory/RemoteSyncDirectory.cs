@@ -123,7 +123,10 @@ namespace Examine.RemoteDirectory
         }
 
 
-        public string RootFolder { get; }
+        public virtual string RootFolder
+        {
+            get { return CacheDirectory.ToString(); }
+        }
         public ILoggingService LoggingService { get; }
         public bool CompressBlobs { get; }
 

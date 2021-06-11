@@ -16,6 +16,7 @@ namespace Examine.RemoteDirectory
     {
         private readonly string _cacheDirectoryPath;
         private readonly string _cacheDirectoryName;
+        private readonly DirectoryInfo _dirForQuickRestore;
         private BlockingCollectionQueue _rebuildQueue;
         private string _oldIndexFolderName;
         private bool isBooting = true;
@@ -23,18 +24,20 @@ namespace Examine.RemoteDirectory
         public RemoteReadOnlyLuceneSyncDirectory(IRemoteDirectory remoteDirectory,
             string cacheDirectoryPath,
             string cacheDirectoryName,
+            DirectoryInfo dirForQuickRestore,
             ILoggingService loggingService,
             bool compressBlobs = false) : base(remoteDirectory, loggingService, compressBlobs)
         {
             _cacheDirectoryPath = cacheDirectoryPath;
             _cacheDirectoryName = cacheDirectoryName;
+            _dirForQuickRestore = dirForQuickRestore;
             _rebuildQueue = new BlockingCollectionQueue(loggingService);
             IsReadOnly = true;
             if (CacheDirectory == null)
             {
                 LoggingService.Log(new LogEntry(LogLevel.Info, null,
-                    $"CacheDirectory null. Creating or rebuilding cache"));
-
+                    $"CacheDirectory null. Creating or rebuilding cache for index {cacheDirectoryName}"));
+                
                 CreateOrReadCache();
             }
             else
@@ -59,11 +62,18 @@ namespace Examine.RemoteDirectory
         {
             SetDirty();
             //that is not best way of doing that shit, but good enough for testing
-            if (NextCheck == null || DateTime.Now > NextCheck.Add(TimeSpan.FromMinutes(1)))
+            if (NextCheck == null || NextCheck.ContainsKey(RootFolder)  && DateTime.Now > NextCheck[RootFolder].Add(TimeSpan.FromMinutes(1)))
             {
                 DirtyStrings = HandleCheckDirty();
+                LoggingService.Log(new LogEntry(LogLevel.Info, null,
+                    $"Checking synchronization for {RootFolder}"));
+                if (NextCheck.ContainsKey(RootFolder))
+                {
+                    NextCheck.Remove(RootFolder);
 
-                NextCheck = DateTime.Now;
+                }
+               
+                NextCheck.Add(RootFolder,DateTime.Now);
             }
             else
             {
@@ -76,7 +86,7 @@ namespace Examine.RemoteDirectory
             return DirtyStrings;
         }
 
-        public DateTime NextCheck;
+        public static Dictionary<string,DateTime> NextCheck = new Dictionary<string, DateTime>();
         public string[] DirtyStrings;
 
         public RemoteReadOnlyLuceneSyncDirectory(IRemoteDirectory remoteDirectory,
@@ -102,7 +112,10 @@ namespace Examine.RemoteDirectory
                   CheckDirty();
             }
         }
-
+        public override string RootFolder
+        {
+            get { return _cacheDirectoryName; }
+        }
         protected override void GuardCacheDirectory(Lucene.Net.Store.Directory cacheDirectory)
         {
             //Do nothing
@@ -128,6 +141,17 @@ namespace Examine.RemoteDirectory
                         _oldIndexFolderName = directory.Name;
                         CacheDirectory = new SimpleFSDirectory(directory);
                         _lockFactory = CacheDirectory.LockFactory;
+                    }
+                    else if (_dirForQuickRestore.Exists && _dirForQuickRestore.GetFiles().Any())
+                    {
+                        var tempDir = new DirectoryInfo(
+                            Path.Combine(_cacheDirectoryPath,
+                                _cacheDirectoryName, DateTimeOffset.UtcNow.ToString("yyyyMMddTHHmmssfffffff")));
+                        if (tempDir.Exists == false)
+                            tempDir.Create();
+                        CopyFilesRecursively(_dirForQuickRestore,tempDir );
+                        
+                        CacheDirectory = new SimpleFSDirectory(tempDir);
                     }
                     else
                     {
@@ -262,6 +286,8 @@ namespace Examine.RemoteDirectory
 
                         var oldIndex = CacheDirectory;
                         newIndex.Dispose();
+                        CopyFilesRecursively(tempDir, _dirForQuickRestore);
+                     
                         newIndex = new SimpleFSDirectory(tempDir);
 
                         CacheDirectory = newIndex;
@@ -276,7 +302,12 @@ namespace Examine.RemoteDirectory
                 }
             });
         }
-
+        private void CopyFilesRecursively(DirectoryInfo source, DirectoryInfo target) {
+            foreach (DirectoryInfo dir in source.GetDirectories())
+                CopyFilesRecursively(dir, target.CreateSubdirectory(dir.Name));
+            foreach (FileInfo file in source.GetFiles())
+                file.CopyTo(Path.Combine(target.FullName, file.Name));
+        }
         public override bool FileExists(string name)
         {
             CheckDirty();

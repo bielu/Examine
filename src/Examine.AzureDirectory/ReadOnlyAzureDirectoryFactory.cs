@@ -39,7 +39,7 @@ namespace Examine.AzureDirectory
                 new AzureRemoteDirectory(GetStorageAccountConnectionString(), GetContainerName(),
                     luceneIndexFolder.Name, loggingService),
                 tempFolder,
-                indexName, loggingService
+                indexName, luceneIndexFolder,loggingService
             );
 
 
